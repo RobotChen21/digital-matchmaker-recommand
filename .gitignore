@@ -1,0 +1,62 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+dist/
+wheels/
+*.egg-info/
+.installedfiles
+htmlcov/
+.tox/
+.venv/
+env/
+venv/
+lib/
+lib64/
+include/
+share/
+bin/
+pip-wheel-metadata/
+.conda/
+.jupyter/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# PyInstaller
+*.spec
+_pyinstaller_hooks/
+__pyinstaller/
+
+# Editor/IDE files
+.idea/
+.vscode/
+*.swp
+*.bak
+*.swo
+*~
+*.log
+
+# OS generated files
+.DS_Store
+.Trashes
+Thumbs.db
+
+# Environment variables
+.env
+.flaskenv
+
+# Project specific
+chroma_db/
+
+GEMINI.md
+AGENTS.md
+DDL.js
