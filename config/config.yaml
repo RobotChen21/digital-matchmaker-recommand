@@ -1,0 +1,26 @@
+# 数据库配置
+database:
+  mongo_uri: "mongodb://localhost:27017/"
+  db_name: "digital_matchmaker"
+  chroma_persist_dir: "./chroma_db"
+  chroma_collection_name: "dating_app_dialogues"
+
+# 模型配置
+llm:
+  model_name: "deepseek-v3.2"
+  temperature_user: 0.9  # 用户生成温度更高,更随机
+  temperature_ai: 0.7    # AI 红娘更稳定
+  chroma_embedding_model: "all-MiniLM-L6-v2" # <--- 新增嵌入模型配置
+
+# 生成任务配置
+generation:
+  num_users: 1
+  min_onboarding_turns: 12
+  max_onboarding_turns: 30
+  min_chat_messages: 5
+  max_chat_messages: 10
+
+# RAG 配置
+rag:
+  window_size: 5
+  overlap: 2
