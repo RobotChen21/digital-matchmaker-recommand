@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import List, Dict, Tuple
-from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter # 更新后的导入路径
 from langchain_core.documents import Document
@@ -13,8 +13,8 @@ class EnhancedChromaManager:
         self.collection_name = collection_name
         
         # 从配置中加载嵌入模型名称
-        from config.settings import settings # 在这里局部导入settings，避免循环引用
-        self.embeddings_model = SentenceTransformerEmbeddings(model_name=settings.llm.chroma_embedding_model)
+        from app.core.config import settings # 在这里局部导入settings，避免循环引用
+        self.embeddings_model = HuggingFaceEmbeddings(model_name=settings.llm.chroma_embedding_model)
         
         self.vector_db = Chroma(
             collection_name=self.collection_name,
@@ -49,7 +49,11 @@ class EnhancedChromaManager:
                 continue
             
             # 将窗口内的消息拼接成一个文本块
-            context_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in window])
+            # 兼容两种消息格式: Onboarding (有role) 和 Social Chat (有sender_id)
+            context_text = "\n".join([
+                f"{msg.get('role', msg.get('sender_id', 'Unknown'))}: {msg.get('content', '')}" 
+                for msg in window
+            ])
             
             # 创建 Document，包含元数据
             doc = Document(
@@ -59,7 +63,7 @@ class EnhancedChromaManager:
                     "dialogue_type": dialogue_type,
                     "start_message_index": i,
                     "end_message_index": i + len(window) - 1,
-                    "timestamp": window[0].get('timestamp', str(datetime.now())) # 使用第一条消息的时间戳
+                    "timestamp": str(window[0].get('timestamp', datetime.now())) # 确保转为字符串
                 }
             )
             documents.append(doc)
@@ -70,8 +74,8 @@ class EnhancedChromaManager:
                 ids=[d.metadata['user_id'] + "_" + d.metadata['dialogue_type'] + "_" + str(d.metadata['start_message_index']) for d in documents]
             )
             self.vector_db.add_documents(documents)
-            self.vector_db.persist()
-            print(f"✅ ChromaDB: 为用户 {user_id} 添加 {len(documents)} 条 {dialogue_type} 对话块ảng。")
+            # self.vector_db.persist() # 新版本自动持久化，无需手动调用
+            print(f"✅ ChromaDB: 为用户 {user_id} 添加 {len(documents)} 条 {dialogue_type} 对话块。")
 
     def retrieve_related_context(self, query: str, user_id: str, k: int = 5) -> List[Document]:
         """

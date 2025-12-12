@@ -7,7 +7,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
-from pipeline.data_generation import EnhancedDataGenerationPipeline
+from app.services.ai.workflows.data_pipeline import EnhancedDataGenerationPipeline
 
 if __name__ == "__main__":
     print(f"🔧 Working Directory: {os.getcwd()}")

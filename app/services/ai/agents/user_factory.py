@@ -7,8 +7,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
-from models.user import VirtualUser
-from database.mongo_manager import MongoDBManager
+from app.common.models.user import VirtualUser
+from app.db.mongo_manager import MongoDBManager
 
 class VirtualUserGenerator:
     """虚拟用户生成器"""

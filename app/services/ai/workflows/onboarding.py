@@ -7,8 +7,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
-from database.mongo_manager import MongoDBManager
-from services.termination_service import DialogueTerminationManager
+from app.db.mongo_manager import MongoDBManager
+from app.services.ai.tools.termination import DialogueTerminationManager
 
 class TurnByTurnOnboardingGenerator:
     """分回合 AI 红娘 Onboarding 对话生成器"""
@@ -21,7 +21,7 @@ class TurnByTurnOnboardingGenerator:
         # AI 红娘的 Prompt
         self.ai_prompt = ChatPromptTemplate.from_messages([
             ("system", """你是一名资深的婚恋顾问，正在通过对话帮助用户建立完善的个人画像。
-你的目标是温柔、耐心、高情商地引导用户说出他们的家庭、教育、工作、资产、生活方式、恋爱风格等信息。
+你的目标是温柔、耐心、高情商地引导用户说出他们的家庭、教育、工作、资产、生活方式、恋爱风格等信息，这些信息尽量收集全。
 每一轮你只能提出一个或少数几个问题，让用户有充足的表达空间。
 如果用户表现出抵触，你需要巧妙地安抚和引导。
 切记：你是一个充满人情味的红娘，不是冷冰冰的机器人。

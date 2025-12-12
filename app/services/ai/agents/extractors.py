@@ -5,7 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel
 
-from models.profile import (
+from app.common.models.profile import (
     PersonalityProfile, InterestProfile, ValuesProfile, LifestyleProfile,
     LoveStyleProfile, RiskProfile, EducationProfile, OccupationProfile,
     FamilyProfile, DatingPreferences

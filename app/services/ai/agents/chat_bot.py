@@ -9,9 +9,9 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
-from models.user import VirtualUser
-from database.mongo_manager import MongoDBManager
-from services.termination_service import DialogueTerminationManager
+from app.common.models.user import VirtualUser
+from app.db.mongo_manager import MongoDBManager
+from app.services.ai.tools.termination import DialogueTerminationManager
 
 class PersonaBasedChatGenerator:
     """基于角色的社交聊天生成器"""

@@ -37,12 +37,14 @@ class Settings(BaseModel):
 
     @classmethod
     def load_from_yaml(cls, path: str = "config/config.yaml") -> "Settings":
-        # 尝试从多个路径加载，以兼容不同运行环境
+        # 获取项目根目录 (假设 app/core/config.py 在 app/core/ 下)
+        current_file = Path(__file__)
+        project_root = current_file.parent.parent.parent # app/core/config.py -> app/core -> app -> root
+        
         possible_paths = [
-            Path(path), # 默认路径
-            Path(os.getcwd()) / path, # 当前工作目录
-            Path(__file__).parent / path, # config/config.yaml
-            Path(__file__).parent.parent / path # project_root/config/config.yaml
+            project_root / "config" / "config.yaml", # 标准路径
+            Path(os.getcwd()) / "config" / "config.yaml", # 运行时路径
+            Path(path) # 绝对路径或相对于 CWD
         ]
         
         found_path = None
@@ -52,7 +54,12 @@ class Settings(BaseModel):
                 break
 
         if not found_path:
-            raise FileNotFoundError(f"Config file not found in any of the expected paths: {possible_paths}")
+            # Fallback for old structure or if running from scripts
+            if (Path(os.getcwd()) / "config.yaml").exists():
+                 found_path = Path(os.getcwd()) / "config.yaml"
+
+        if not found_path:
+            raise FileNotFoundError(f"Config file not found. Searched in: {[str(p) for p in possible_paths]}")
 
         with open(found_path, "r", encoding="utf-8") as f:
             config_data = yaml.safe_load(f)

@@ -9,10 +9,10 @@ project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
 from langchain_openai import ChatOpenAI
-from config.settings import settings
+from app.core.config import settings
 from utils.env_utils import API_KEY, BASE_URL
-from database.mongo_manager import MongoDBManager
-from services.profile_extractor import (
+from app.db.mongo_manager import MongoDBManager
+from app.services.ai.agents.extractors import (
     PersonalityExtractor, InterestExtractor, ValuesExtractor,
     LifestyleExtractor, LoveStyleExtractor, RiskExtractor,
     EducationExtractor, OccupationExtractor, FamilyExtractor,
