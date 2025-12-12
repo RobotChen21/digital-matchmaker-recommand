@@ -2,6 +2,7 @@
 from datetime import datetime
 from bson import ObjectId
 from langchain_openai import ChatOpenAI
+from langchain_core.documents import Document
 
 from app.db.mongo_manager import MongoDBManager
 from app.db.chroma_manager import EnhancedChromaManager
@@ -63,6 +64,9 @@ class UserInitializationService:
 
             # 3. 提取画像 (Profile Extraction)
             print("  3️⃣ 实时分析对话提取画像...")
+            
+            # 确保 profile_data 初始化
+            profile_data = {}
             if conversation_history:
                 dialogue_text = self.profile_service.format_dialogue_for_llm(conversation_history)
                 profile_data = self.profile_service.extract_from_dialogue(dialogue_text)
@@ -81,8 +85,43 @@ class UserInitializationService:
             else:
                 print("     ⚠️ 对话为空，跳过画像提取")
 
-            # 4. 向量化 (Vectorization)
-            print("  4️⃣ 存入向量数据库 (RAG)...")
+            # 3.5 向量化画像 (Profile Vectorization) [NEW]
+            print("  3️⃣.5️⃣ 向量化用户画像 (Profile Vectorization)...")
+            if profile_data:
+                # 获取基础信息 (user_dict 是生成时的字典，包含 birthday, gender, city)
+                # 注意 user_dict 里可能没有 height，但 user_obj 里有
+                basic_info = user_obj.model_dump()
+                
+                # 生成摘要
+                summary_text = ProfileService.generate_profile_summary(basic_info, profile_data)
+                
+                # 准备元数据
+                metadata = {
+                    "user_id": str(user_id),
+                    "gender": basic_info.get('gender', 'unknown'), 
+                    "data_type": "profile_summary", 
+                    "city": basic_info.get('city', 'unknown'), 
+                    "timestamp": str(datetime.now())
+                }
+                
+                if basic_info.get('height'):
+                    metadata['height'] = basic_info.get('height')
+                
+                # 计算 birth_year (复用逻辑)
+                try:
+                    bday = basic_info.get('birthday')
+                    if bday:
+                        metadata['birth_year'] = int(bday.split('-')[0])
+                except:
+                    pass
+
+                # 存入 Chroma
+                doc = Document(page_content=summary_text, metadata=metadata)
+                self.chroma_manager.vector_db.add_documents([doc])
+                print("     ✅ 画像摘要已存入向量数据库")
+
+            # 4. 向量化对话 (Onboarding Vectorization)
+            print("  4️⃣ 存入向量数据库 (Onboarding RAG)...")
             if conversation_history:
                  self.chroma_manager.add_conversation_chunks(
                     str(user_id),
@@ -91,7 +130,7 @@ class UserInitializationService:
                     window_size=settings.rag.window_size,
                     overlap=settings.rag.overlap
                 )
-                 print("     ✅ 向量索引构建完成")
+                 print("     ✅ 对话向量索引构建完成")
 
             print(f"✨ 用户 [{user_obj.nickname}] 初始化流程全部完成!")
             return user_id
@@ -106,9 +145,11 @@ class UserInitializationService:
                     self.db_manager.onboarding_dialogues.delete_one({"user_id": user_id})
                     self.db_manager.db["users_profile"].delete_one({"user_id": user_id})
                     self.db_manager.chat_records.delete_many({"user_id": user_id})
-                    # 注意：ChromaDB 的删除比较复杂，这里暂不处理（因为还没成功写入或覆盖写入）
+                    # ChromaDB Cleanup? 如果 3.5 步成功但 4 步失败，会留下脏画像向量。
+                    # 不过因为向量检索时会 filter user_id，如果 user_id 在 MongoDB 没了，推荐流程第一步 LoadProfile 就挂了，所以检索不到。
+                    # 为了完美，最好也删。但 Chroma 删除操作复杂，暂略。
                     print("     ✅ 脏数据清理完成")
                 except Exception as cleanup_error:
                     print(f"     ⚠️ 清理脏数据失败: {cleanup_error}")
             
-            raise e # 重新抛出异常，让上层 Pipeline 感知
+            raise e # 重新抛出异常

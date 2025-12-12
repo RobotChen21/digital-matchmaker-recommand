@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 # 1. 兴趣画像
 class InterestProfile(BaseModel):
     tags: List[str] = Field(default_factory=list, description="兴趣标签列表")
-    strength: Dict[str, float] = Field(default_factory=dict, description="各项兴趣的强度(0.0-1.0)")
+    strength: Dict[str, Optional[float]] = Field(default_factory=dict, description="各项兴趣的强度(0.0-1.0)")
 
 # 2. 人格画像
 class Big5Traits(BaseModel):

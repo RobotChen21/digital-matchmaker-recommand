@@ -77,17 +77,25 @@ class EnhancedChromaManager:
             # self.vector_db.persist() # 新版本自动持久化，无需手动调用
             print(f"✅ ChromaDB: 为用户 {user_id} 添加 {len(documents)} 条 {dialogue_type} 对话块。")
 
-    def retrieve_related_context(self, query: str, user_id: str, k: int = 5) -> List[Document]:
+    def retrieve_related_context(self, query: str, user_id: str = None, k: int = 5, filter: Dict = None) -> List[Document]:
         """
         从向量数据库中检索与查询相关的文档。
-        可以根据 user_id 过滤，只检索特定用户的对话上下文。
+        支持 user_id 快捷过滤，也支持自定义 filter 字典。
         """
-        # 注意: ChromaDB 的 .as_retriever() 方法在过滤方面可能不如直接查询灵活
-        # 这里我们使用 collection.query 方法进行更精细的过滤
+        search_filter = filter if filter else {}
+        
+        # 如果传入了 user_id，合并到 filter 中
+        if user_id:
+            if search_filter:
+                # 如果已经有 filter，使用 $and 组合
+                search_filter = {"$and": [search_filter, {"user_id": user_id}]}
+            else:
+                search_filter = {"user_id": user_id}
+
         results = self.vector_db.similarity_search_with_score(
             query=query,
             k=k,
-            filter={"user_id": user_id}
+            filter=search_filter
         )
         
         # results 是 (Document, score) 元组的列表

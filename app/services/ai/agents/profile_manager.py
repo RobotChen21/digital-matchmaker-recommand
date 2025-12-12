@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Any, Optional
+from datetime import datetime
 from langchain_openai import ChatOpenAI
 from app.services.ai.agents.extractors import (
     PersonalityExtractor, InterestExtractor, ValuesExtractor,
@@ -60,3 +61,58 @@ class ProfileService:
             content = msg.get('content', '')
             text.append(f"{role}: {content}")
         return "\n".join(text)
+
+    @staticmethod
+    def generate_profile_summary(basic: Dict, profile: Dict) -> str:
+        """将结构化画像转换为自然语言摘要 (用于向量化)"""
+        parts = []
+        
+        # 辅助函数: 计算年龄
+        def _get_age(bday):
+            if not bday: return "未知"
+            try:
+                if isinstance(bday, datetime):
+                    return str(datetime.now().year - bday.year)
+                elif isinstance(bday, str):
+                    return str(datetime.now().year - int(bday.split('-')[0]))
+                return "未知"
+            except:
+                return "未知"
+
+        # 基础信息
+        age = _get_age(basic.get('birthday'))
+        parts.append(f"我是{basic.get('nickname')}，{basic.get('gender')}性，今年{age}岁，住在{basic.get('city')}。")
+        
+        # 职业
+        occ = profile.get('occupation_profile')
+        if occ:
+            parts.append(f"职业是{occ.get('job_title', '未知')}，行业是{occ.get('industry', '未知')}。")
+        
+        # 性格
+        pers = profile.get('personality_profile')
+        if pers:
+            mbti = pers.get('mbti', '')
+            if mbti: parts.append(f"MBTI类型是{mbti}。")
+            # Big5
+            big5 = pers.get('big5', {})
+            if big5:
+                traits = []
+                if big5.get('extroversion', 0) > 0.6: traits.append("外向")
+                if big5.get('openness', 0) > 0.6: traits.append("充满想象力")
+                if big5.get('conscientiousness', 0) > 0.6: traits.append("认真负责")
+                if big5.get('agreeableness', 0) > 0.6: traits.append("随和")
+                if big5.get('neuroticism', 0) > 0.6: traits.append("敏感")
+                if traits: parts.append(f"性格关键词：{'、'.join(traits)}。")
+
+        # 兴趣
+        interest = profile.get('interest_profile')
+        if interest:
+            tags = interest.get('tags', [])
+            if tags: parts.append(f"我的兴趣爱好包括：{'、'.join(tags)}。")
+            
+        # 价值观/生活方式 (可选)
+        life = profile.get('lifestyle_profile')
+        if life:
+            parts.append(f"生活习惯：{life.get('smoking', '未知')}抽烟，{life.get('drinking', '未知')}喝酒。")
+
+        return " ".join(parts)

@@ -10,7 +10,7 @@ class MongoDBManager:
     def __init__(self, uri: str, db_name: str):
         self.client = MongoClient(uri)
         self.db = self.client[db_name]
-        self.users_basic = self.db["users_basic"]
+        self.users_basic = self.db["users_basic"] # 恢复为使用原始 users_basic 集合
         self.users_persona = self.db["users_persona"]
         self.onboarding_dialogues = self.db["users_onboarding_dialogues"]
         self.chat_records = self.db["chat_records"]
