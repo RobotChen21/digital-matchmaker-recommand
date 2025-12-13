@@ -1,12 +1,11 @@
 import random
 from typing import List
 from bson import ObjectId
-from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
-from utils.env_utils import API_KEY, BASE_URL
+from app.core.llm import get_llm
 from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import EnhancedChromaManager
+from app.db.chroma_manager import ChromaManager
 from app.services.ai.workflows.user_init import UserInitializationService
 from app.services.ai.agents.chat_bot import PersonaBasedChatGenerator
 from app.services.ai.tools.termination import DialogueTerminationManager
@@ -19,22 +18,12 @@ class EnhancedDataGenerationPipeline:
             raise ValueError("❌ 错误: 配置文件未成功加载，无法初始化 Pipeline。")
 
         # 初始化 LLM
-        self.llm_ai = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=settings.llm.temperature_ai,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
-        self.llm_user = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=settings.llm.temperature_user,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        self.llm_ai = get_llm(temperature=settings.llm.temperature_ai)
+        self.llm_user = get_llm(temperature=settings.llm.temperature_user)
 
         # 初始化数据库
         self.db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
-        self.chroma_manager = EnhancedChromaManager(
+        self.chroma_manager = ChromaManager(
             settings.database.chroma_persist_dir,
             settings.database.chroma_collection_name
         )

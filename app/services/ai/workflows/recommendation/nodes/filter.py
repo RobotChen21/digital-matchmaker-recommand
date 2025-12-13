@@ -1,24 +1,18 @@
 # -*- coding: utf-8 -*-
 from bson import ObjectId
 from datetime import datetime
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.config import settings
-from utils.env_utils import API_KEY, BASE_URL
+from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import FilterOutput, RefineOutput
 
 class FilterNode:
     def __init__(self, db_manager):
         self.db = db_manager
-        self.llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        self.llm = get_llm(temperature=0)
         
         self.filter_parser = PydanticOutputParser(pydantic_object=FilterOutput)
         self.filter_chain = (

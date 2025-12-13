@@ -2,7 +2,7 @@
 from langgraph.graph import StateGraph, END
 from app.common.models.state import MatchmakingState
 from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import EnhancedChromaManager
+from app.db.chroma_manager import ChromaManager
 
 # Import Nodes
 from .nodes.intent import IntentNode
@@ -13,7 +13,7 @@ from .nodes.response import ResponseNode
 from .nodes.deep_dive import DeepDiveNode # New
 
 class RecommendationGraphBuilder:
-    def __init__(self, db_manager: MongoDBManager, chroma_manager: EnhancedChromaManager):
+    def __init__(self, db_manager: MongoDBManager, chroma_manager: ChromaManager):
         # 初始化各个 Node 类
         self.intent_node = IntentNode(db_manager)
         self.filter_node = FilterNode(db_manager)

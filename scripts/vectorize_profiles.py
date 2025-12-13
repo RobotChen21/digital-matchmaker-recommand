@@ -10,7 +10,7 @@ sys.path.append(project_root)
 
 from app.core.config import settings
 from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import EnhancedChromaManager
+from app.db.chroma_manager import ChromaManager
 from app.services.ai.agents.profile_manager import ProfileService
 from langchain_core.documents import Document
 
@@ -37,7 +37,7 @@ def main():
 
     # 1. Init
     db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
-    chroma_manager = EnhancedChromaManager(
+    chroma_manager = ChromaManager(
         settings.database.chroma_persist_dir,
         settings.database.chroma_collection_name
     )

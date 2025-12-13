@@ -1,22 +1,16 @@
 # -*- coding: utf-8 -*-
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.config import settings
-from utils.env_utils import API_KEY, BASE_URL
+from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import EvidenceOutput
 
 class ResponseNode:
     def __init__(self, chroma_manager):
         self.chroma = chroma_manager
-        self.llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0.4,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        self.llm = get_llm(temperature=0.4)
         
         self.evidence_parser = PydanticOutputParser(pydantic_object=EvidenceOutput)
         self.evidence_chain = (

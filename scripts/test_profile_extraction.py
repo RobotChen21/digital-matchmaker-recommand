@@ -8,9 +8,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
-from langchain_openai import ChatOpenAI
 from app.core.config import settings
-from utils.env_utils import API_KEY, BASE_URL
+from app.core.llm import get_llm
 from app.db.mongo_manager import MongoDBManager
 from app.services.ai.agents.extractors import (
     PersonalityExtractor, InterestExtractor, ValuesExtractor,
@@ -36,12 +35,7 @@ def main():
     db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
     
     # 使用较低的 temperature 保证提取的客观性和格式稳定性
-    llm = ChatOpenAI(
-        model=settings.llm.model_name,
-        temperature=0.1, 
-        api_key=API_KEY,
-        base_url=BASE_URL,
-    )
+    llm = get_llm(temperature=0.1)
 
     # 实例化所有 Agent
     agents = {

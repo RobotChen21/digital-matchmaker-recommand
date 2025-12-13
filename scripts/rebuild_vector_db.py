@@ -11,7 +11,7 @@ sys.path.append(project_root)
 
 from app.core.config import settings
 from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import EnhancedChromaManager
+from app.db.chroma_manager import ChromaManager
 
 def main():
     print("🚀 开始重建向量数据库索引 (MongoDB -> ChromaDB)...")
@@ -24,7 +24,7 @@ def main():
     db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
     
     print(f"🔧 连接 ChromaDB: {settings.database.chroma_persist_dir}")
-    chroma_manager = EnhancedChromaManager(
+    chroma_manager = ChromaManager(
         settings.database.chroma_persist_dir,
         settings.database.chroma_collection_name
     )

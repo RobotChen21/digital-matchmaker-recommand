@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
 
 from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import EnhancedChromaManager
+from app.db.chroma_manager import ChromaManager
 from app.services.ai.agents.user_factory import VirtualUserGenerator
 from app.services.ai.workflows.onboarding import TurnByTurnOnboardingGenerator
 from app.services.ai.agents.profile_manager import ProfileService
@@ -18,7 +18,7 @@ class UserInitializationService:
     职责：原子化地执行 [生成用户 -> 红娘对话 -> 提取画像] 这一完整流程。
     """
 
-    def __init__(self, db_manager: MongoDBManager, chroma_manager: EnhancedChromaManager, llm_ai: ChatOpenAI, llm_user: ChatOpenAI):
+    def __init__(self, db_manager: MongoDBManager, chroma_manager: ChromaManager, llm_ai: ChatOpenAI, llm_user: ChatOpenAI):
         self.db_manager = db_manager
         self.chroma_manager = chroma_manager
         

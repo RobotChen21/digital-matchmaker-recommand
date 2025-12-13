@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from bson import ObjectId
 
 from app.core.config import settings
-from utils.env_utils import API_KEY, BASE_URL
+from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
 
 class DeepDiveNode:
     def __init__(self, db_manager, chroma_manager):
         self.db = db_manager
         self.chroma = chroma_manager
-        self.llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0.7, # 稍微高一点，更有情感
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        # 稍微高一点，更有情感
+        self.llm = get_llm(temperature=0.7)
         
         self.deep_answer_chain = (
             ChatPromptTemplate.from_template(

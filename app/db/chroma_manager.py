@@ -5,8 +5,8 @@ from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter # 更新后的导入路径
 from langchain_core.documents import Document
 
-class EnhancedChromaManager:
-    """增强型的 ChromaDB 管理器，支持对话分块和检索"""
+class ChromaManager:
+    """ChromaDB 管理器，支持对话分块和检索"""
 
     def __init__(self, persist_directory: str = "./chroma_db", collection_name: str = "default_collection"):
         self.persist_directory = persist_directory

@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from bson import ObjectId
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.config import settings
-from utils.env_utils import API_KEY, BASE_URL
+from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import IntentOutput
 
 class IntentNode:
     def __init__(self, db_manager):
         self.db = db_manager
-        self.llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        # 意图识别需要精确
+        self.llm = get_llm(temperature=0)
         
         self.intent_parser = PydanticOutputParser(pydantic_object=IntentOutput)
         self.intent_chain = (
@@ -41,12 +36,8 @@ class IntentNode:
         )
         
         # [NEW] 通用对话 Chain (Chat/Consultation)
-        self.chitchat_llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0.5,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        # 闲聊需要灵活性
+        self.chitchat_llm = get_llm(temperature=0.7)
         self.chitchat_chain = (
             ChatPromptTemplate.from_template(
                 """你是一位**资深婚恋顾问**，说话**专业、知性、温暖且有边界感**。
