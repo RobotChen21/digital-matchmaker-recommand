@@ -55,6 +55,8 @@ def main():
     # Context Memory
     last_candidates = []
     last_target = None
+    seen_ids = []
+    last_criteria = {} # 上一轮的搜索条件
     
     while True:
         try:
@@ -66,13 +68,16 @@ def main():
             if not user_input.strip(): continue
             
             # Construct State
+            # 我们把上一轮的 candidates 和 target 传进去
             state = {
                 "user_id": my_id,
                 "current_input": user_input,
                 "messages": [], 
                 "search_count": 0,
                 "final_candidates": last_candidates,
-                "last_target_person": last_target 
+                "last_target_person": last_target,
+                "seen_candidate_ids": seen_ids, # 注入已见过的ID
+                "last_search_criteria": last_criteria # 注入上一轮条件
             }
             
             # Invoke
@@ -86,10 +91,23 @@ def main():
             print(f"🤖 红娘 ({intent}): {reply}")
             
             # Update Context
-            if intent == "search_candidate" and final_state.get('final_candidates'):
-                last_candidates = final_state.get('final_candidates')
-                print(f"   (已记忆 {len(last_candidates)} 位候选人)")
-            
+            if intent == "search_candidate":
+                # 保存本次使用的条件
+                last_criteria = {
+                    "hard_filters": final_state.get("hard_filters"),
+                    "semantic_query": final_state.get("semantic_query"),
+                    "match_policy": final_state.get("match_policy")
+                }
+                
+                if final_state.get('final_candidates'):
+                    last_candidates = final_state.get('final_candidates')
+                    print(f"   (已记忆 {len(last_candidates)} 位候选人)")
+                
+                # 更新已见过的列表
+                if final_state.get('seen_candidate_ids'):
+                    seen_ids = final_state.get('seen_candidate_ids')
+                    print(f"   (当前累计已展示 {len(seen_ids)} 人)")
+
             if intent == "deep_dive":
                 current_target = final_state.get('target_person_name')
                 if current_target:

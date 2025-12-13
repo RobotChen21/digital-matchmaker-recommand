@@ -172,4 +172,14 @@ class ResponseNode:
                  state['reply'] = "为您找到以下嘉宾:\n" + candidates_info
 
         print(f"🤖 [Response Done]: {state['reply'][:50]}...")
+        
+        # [NEW] 更新已见过的候选人列表 (用于"换一批"功能)
+        seen = state.get('seen_candidate_ids', [])
+        if seen is None: seen = [] # 防御性编程
+        
+        for c in candidates:
+            if c['id'] not in seen:
+                seen.append(c['id'])
+        state['seen_candidate_ids'] = seen
+        
         return state

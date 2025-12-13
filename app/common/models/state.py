@@ -32,6 +32,8 @@ class MatchmakingState(TypedDict):
     error_msg: Optional[str]           # 错误信息
     target_person_name: Optional[str]  # 当前正在深度探索的目标名字
     last_target_person: Optional[str]  # 上一轮深度探索的目标名字 (用于指代消解)
+    seen_candidate_ids: List[str]      # [NEW] 已经推荐过的候选人 ID 列表 (用于"换一批"排除)
+    last_search_criteria: Optional[Dict] # [NEW] 上一轮的搜索条件 (用于"换一批"继承: hard_filters, semantic_query, match_policy)
     
     # 6. 用户画像上下文
     current_user_gender: Optional[str] # 当前用户性别

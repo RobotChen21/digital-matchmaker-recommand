@@ -32,14 +32,20 @@ class FilterNode:
                 1. **绝对不要**包含 `gender` 或 `sex` 字段。
                 2. **只允许**筛选以下字段: `city`, `height`.
                 3. 年龄请提取 `age_min` 和 `age_max`。
-                4. 身材请提取 `bmi_min` 和 `bmi_max` (BMI标准: <18.5偏瘦, 18.5-24正常, 24-28微胖, >28肥胖)。
-                   - "不喜欢胖的" -> bmi_max=24
-                   - "微胖也可以" -> bmi_max=28
-                   - "喜欢瘦一点" -> bmi_max=20
+                4. 身材请提取 `bmi_min` 和 `bmi_max`，参考以下映射表：
+                   - "很瘦/骨感" -> bmi_max=18.5
+                   - "瘦/苗条/纤细" -> bmi_max=20
+                   - "不胖/匀称/标准" -> bmi_min=18.5, bmi_max=24
+                   - "微胖/丰满/有肉/壮实" -> bmi_min=24, bmi_max=28
+                   - "胖/大码" -> bmi_min=28
+                   - "不要太瘦" -> bmi_min=18.5
+                   - "不要胖的" -> bmi_max=24
+                   - "不要太胖" -> bmi_max=28 (包含微胖)
                 
                 例如:
                 - "我要找上海的" -> {{"mongo_query": {{"city": "上海"}}}}
-                - "25-30岁，不要太胖" -> {{"age_min": 25, "age_max": 30, "bmi_max": 24}}
+                - "25-30岁，微胖也可以" -> {{"age_min": 25, "age_max": 30, "bmi_max": 28}}
+                - "找个瘦一点的" -> {{"bmi_max": 20}}
                 
                 输出JSON: {format_instructions}"""
             ) | self.llm | self.filter_parser
@@ -129,8 +135,19 @@ class FilterNode:
             if target_gender:
                 query['gender'] = target_gender
 
-            # 4. 排除自己
-            query["_id"] = {"$ne": ObjectId(state['user_id'])}
+            # 4. 排除自己 和 排除已见过的候选人 ("换一批")
+            exclude_ids = [ObjectId(state['user_id'])]
+            
+            seen_ids = state.get('seen_candidate_ids', [])
+            if seen_ids:
+                print(f"   -> Excluding {len(seen_ids)} previously seen candidates.")
+                for sid in seen_ids:
+                    try:
+                        exclude_ids.append(ObjectId(sid))
+                    except:
+                        pass
+            
+            query["_id"] = {"$nin": exclude_ids}
             
             print(f"   -> Final Mongo Query: {query}")
 

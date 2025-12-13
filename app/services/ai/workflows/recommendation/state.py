@@ -28,8 +28,8 @@ class FilterOutput(BaseModel):
     mongo_query: Dict[str, Any] = Field(description="MongoDB 查询语句")
     age_min: Optional[int] = Field(None, description="用户期望的最小年龄")
     age_max: Optional[int] = Field(None, description="用户期望的最大年龄")
-    bmi_min: Optional[float] = Field(None, description="用户期望的最小BMI (如: 18.5)")
-    bmi_max: Optional[float] = Field(None, description="用户期望的最大BMI (如: 24.0)")
+    bmi_min: Optional[float] = Field(None, description="用户期望的最小BMI")
+    bmi_max: Optional[float] = Field(None, description="用户期望的最大BMI")
     explanation: str = Field(description="解释")
 
 class RefineOutput(BaseModel):
