@@ -1,12 +1,24 @@
 # -*- coding: utf-8 -*-
 from fastapi import APIRouter, HTTPException, Depends
+
 from app.services.ai.workflows.recommendation import RecommendationWorkflow
 from app.api.schemas.chat_dto import ChatRequest, ChatResponse, CandidateDTO, ChatContext
-from app.api.v1.endpoints.auth import get_current_user_id # 引入依赖
+from app.api.v1.endpoints.auth import get_current_user_id
+from app.db.mongo_manager import MongoDBManager # 新增导入
+from app.db.chroma_manager import ChromaManager # 新增导入
+from app.core.config import settings # 新增导入
 
 router = APIRouter()
 
-rec_workflow = RecommendationWorkflow()
+# --- 全局初始化依赖 (确保只在应用启动时执行一次) ---
+db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
+chroma_manager = ChromaManager(
+    settings.database.chroma_persist_dir,
+    settings.database.chroma_collection_name
+)
+
+# 初始化 Workflow (单例模式)
+rec_workflow = RecommendationWorkflow(db_manager, chroma_manager) # 传入依赖
 rec_app = rec_workflow.build_graph()
 
 @router.post("/message", response_model=ChatResponse)
@@ -21,7 +33,7 @@ async def chat_with_matchmaker(
     
     # 构造初始状态
     initial_state = {
-        "user_id": user_id, # 使用 Token 中的 ID
+        "user_id": user_id, 
         "current_input": request.message,
         "messages": [], 
         "search_count": 0,

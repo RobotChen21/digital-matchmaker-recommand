@@ -7,20 +7,12 @@ from datetime import date # 导入 date 类型
 class UserRegisterRequest(BaseModel):
     account: str = Field(description="登录账号 (手机号/邮箱)")
     password: str = Field(description="登录密码")
-    
-    # 基本信息
-    nickname: str = Field(description="昵称")
-    gender: Literal["male", "female"] = Field(description="性别")
-    birthday: date = Field(description="出生日期 YYYY-MM-DD") # 强制为 date 类型
-    city: str = Field(description="所在城市")
-    height: int = Field(description="身高 (cm)")
-    self_intro: Optional[str] = Field("", description="自我介绍")
 
 class UserRegisterResponse(BaseModel):
     user_id: str
     message: str
 
-# 2. 资料完善 (与注册请求的资料部分一致)
+# 2. 资料完善
 class UserProfileUpdate(BaseModel):
     nickname: str = Field(description="昵称")
     gender: Literal["male", "female"] = Field(description="性别")

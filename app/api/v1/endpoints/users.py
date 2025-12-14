@@ -24,10 +24,16 @@ async def register_account(request: UserRegisterRequest):
         raise HTTPException(status_code=400, detail="该账号已被注册")
 
     try:
-        # 1. 创建一个空的 user_basic 记录，为了拿到 ID
-        # 这里的 created_at 会在 insert_user_with_persona 或直接 insert 时生成
-        # 我们用 insert_one 直接插一个空对象(带时间)
-        empty_basic = {"created_at": datetime.now(), "is_completed": False}
+        # 1. 创建一个空的 user_basic 记录
+        # 只初始化必要的空字段或默认值
+        empty_basic = {
+            "created_at": datetime.now(), 
+            "is_completed": False,
+            "nickname": f"用户{request.account[-4:]}", # 默认昵称
+            "gender": "unknown", # 必须给个默认值，避免后续流程报错
+            "city": "未知",
+            "birthday": datetime(2000, 1, 1) # 默认生日
+        }
         result = db.users_basic.insert_one(empty_basic)
         user_id = result.inserted_id
         
