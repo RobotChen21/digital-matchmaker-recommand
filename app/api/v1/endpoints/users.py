@@ -28,7 +28,7 @@ async def register_account(request: UserRegisterRequest):
         # 只初始化必要的空字段或默认值
         empty_basic = {
             "created_at": datetime.now(), 
-            "is_completed": False,
+            # "is_completed": False, # [REMOVED] 移至 users_states
             "nickname": f"用户{request.account[-4:]}", # 默认昵称
             "gender": "unknown", # 必须给个默认值，避免后续流程报错
             "city": "未知",
@@ -36,6 +36,13 @@ async def register_account(request: UserRegisterRequest):
         }
         result = db.users_basic.insert_one(empty_basic)
         user_id = result.inserted_id
+        
+        # 1.5 初始化用户状态
+        db.users_states.insert_one({
+            "user_id": user_id,
+            "is_onboarding_completed": False,
+            "updated_at": datetime.now()
+        })
         
         # 2. 创建 auth 记录
         pwd_hash = get_password_hash(request.password)
@@ -65,7 +72,8 @@ async def update_profile(
         bday = update_data["birthday"]
         update_data["birthday"] = datetime(bday.year, bday.month, bday.day)
     
-    update_data["is_completed"] = True
+    # is_completed 应该由 Onboarding 流程决定，此处仅更新基础信息
+    # update_data["is_completed"] = True 
     update_data["updated_at"] = datetime.now()
     
     try:
@@ -102,6 +110,10 @@ async def get_my_profile(user_id: str = Depends(get_current_user_id)):
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     
+    # 获取状态
+    state_doc = db.users_states.find_one({"user_id": ObjectId(user_id)})
+    is_completed = state_doc.get("is_onboarding_completed", False) if state_doc else False
+    
     # birthday 从 MongoDB 读出就是 datetime.datetime 类型，Pydantic 会自动处理
     # 如果是 date 类型，Pydantic 也会自动序列化为 YYYY-MM-DD 字符串
         
@@ -113,5 +125,5 @@ async def get_my_profile(user_id: str = Depends(get_current_user_id)):
         city=user.get("city", "未设置"),
         height=user.get("height", 0),
         self_intro=user.get("self_intro_raw", ""),
-        is_profile_completed=user.get("is_completed", False)
+        is_profile_completed=is_completed
     )

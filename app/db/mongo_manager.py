@@ -16,7 +16,9 @@ class MongoDBManager:
         self.users_persona = self.db["users_persona"]
         self.onboarding_dialogues = self.db["users_onboarding_dialogues"]
         self.chat_records = self.db["chat_records"]
-        self.users_auth = self.db["users_auth"] # 新增认证表
+        self.profile = self.db["users_profile"]
+        self.users_auth = self.db["users_auth"]
+        self.users_states = self.db["users_states"] # 状态表 (注意：迁移脚本里用的是 user_states，这里保持一致)
         
         # Indexes
         # 确保 account 唯一

@@ -2,7 +2,7 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from datetime import date
+from datetime import date, datetime
 
 from app.core.config import settings
 from app.core.llm import get_llm # 从 get_llm 导入

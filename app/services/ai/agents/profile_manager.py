@@ -74,6 +74,7 @@ class ProfileService:
             text.append(f"{role}: {content}")
         return "\n".join(text)
 
+# TODO langGraph中的state中的用户画像摘要还要进行优化
     @staticmethod
     def generate_profile_summary(basic: Dict, profile: Dict) -> str:
         """将结构化画像转换为自然语言摘要 (用于向量化)"""

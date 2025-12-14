@@ -1,24 +1,17 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, date
 from bson import ObjectId
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-
-from app.core.config import settings
+from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
-from app.core.env_utils import API_KEY, BASE_URL
 from app.services.ai.workflows.recommendation.state import IntentOutput
+from app.services.ai.agents.profile_manager import ProfileService
 
 class IntentNode:
     def __init__(self, db_manager):
         self.db = db_manager
-        self.llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0,
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        self.llm = get_llm(temperature=0)
         
         self.intent_parser = PydanticOutputParser(pydantic_object=IntentOutput)
         self.intent_chain = (
@@ -50,12 +43,7 @@ class IntentNode:
         )
         
         # [NEW] 通用对话 Chain (Chat/Consultation)
-        self.chitchat_llm = ChatOpenAI(
-            model=settings.llm.model_name,
-            temperature=0.7, 
-            api_key=API_KEY,
-            base_url=BASE_URL,
-        )
+        self.chitchat_llm = get_llm(temperature=0.7)
         self.chitchat_chain = (
             ChatPromptTemplate.from_template(
                 """你是一位**资深婚恋顾问**，说话**专业、知性、温暖且有边界感**。
@@ -68,22 +56,32 @@ class IntentNode:
                 2. 如果是**情感咨询**或**自我提升**问题，请结合用户画像给出客观、建设性的建议。
                 3. **严禁**使用过于亲昵或油腻的称呼（如“弟弟”、“姐姐”、“亲”），保持专业形象。
                 4. 回复要言之有物，不要空洞的套话。
-                5. 如果话题偏离太远，可以幽默地拉回来，提醒他你最擅长的是帮他找对象。
+                
                 请直接输出回复内容，不要带任何前缀。"""
             ) | self.chitchat_llm
         )
 
     def load_profile(self, state: MatchmakingState):
-        """Step 0: 加载当前用户画像"""
+        """Step 0: 加载当前用户全量画像 (Basic + Profile)"""
         print(f"👤 [LoadProfile] 加载用户: {state['user_id']}")
         try:
             uid = ObjectId(state['user_id'])
+            
+            # 1. 查 Basic
             user_basic = self.db.users_basic.find_one({"_id": uid})
             if not user_basic:
                 user_basic = {"gender": "unknown", "city": "unknown", "birthday": date(2000, 1, 1)}
             
+            # 2. 查 Profile
+            user_profile = self.db.profile.find_one({"_id": uid}) or {}
+            
+            # 3. 生成 Summary
+            summary = ProfileService.generate_profile_summary(user_basic, user_profile)
+            
+            # 4. 更新 State
             state['current_user_gender'] = user_basic.get('gender')
-            state['current_user_summary'] = f"性别:{user_basic.get('gender')}, 城市:{user_basic.get('city')}, 年龄:{self._calc_age(user_basic.get('birthday'))}"
+            state['current_user_profile'] = user_profile
+            state['current_user_summary'] = summary
             state['search_count'] = 0 
             
         except Exception as e:
@@ -149,7 +147,6 @@ class IntentNode:
     def _calc_age(self, birthday_val):
         if not birthday_val: return 0
         try:
-            # 统一转为 date 对象进行计算
             if isinstance(birthday_val, datetime):
                 b_date = birthday_val.date()
             elif isinstance(birthday_val, date):

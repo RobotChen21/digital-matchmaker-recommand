@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
-import sys
 import os
 import random
-from pymongo.errors import OperationFailure # 导入 OperationFailure
+import sys
+
+from bson import ObjectId # 导入 ObjectId
+from pymongo.errors import OperationFailure
 
 # 添加项目根目录到 Path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,20 +30,24 @@ def main():
     workflow = RecommendationWorkflow(db_manager, chroma_manager)
     app = workflow.build_graph()
     
-    # 3. Pick a random user as 'me' (优先尝试 $sample，失败回退)
-    me = None
-    try:
-        # 尝试使用 $sample (MongoDB 3.2+ 支持)
-        me = db_manager.users_basic.aggregate([{"$sample": {"size": 1}}]).next()
-    except OperationFailure as e:
-        print(f"⚠️ MongoDB $sample 操作失败: {e}. 回退到兼容模式随机抽取。")
-        # 回退到兼容模式 (skip/limit)
-        user_count = db_manager.users_basic.count_documents({})
-        if user_count > 0:
-            random_index = random.randint(0, user_count - 1)
-            me = db_manager.users_basic.find().skip(random_index).limit(1).next()
-    except StopIteration: # aggregate().next() 如果没找到文档会抛出 StopIteration
-        me = None
+    # 3. Pick user (指定ID优先)
+    target_user_id = "693ebdc20196b88668259955"
+    me = db_manager.users_basic.find_one({"_id": ObjectId(target_user_id)})
+    
+    if not me:
+        print(f"⚠️ 指定用户 {target_user_id} 不存在，尝试随机抽取...")
+        try:
+            # 尝试使用 $sample (MongoDB 3.2+ 支持)
+            me = db_manager.users_basic.aggregate([{"$sample": {"size": 1}}]).next()
+        except OperationFailure as e:
+            print(f"⚠️ MongoDB $sample 操作失败: {e}. 回退到兼容模式随机抽取。")
+            # 回退到兼容模式 (skip/limit)
+            user_count = db_manager.users_basic.count_documents({})
+            if user_count > 0:
+                random_index = random.randint(0, user_count - 1)
+                me = db_manager.users_basic.find().skip(random_index).limit(1).next()
+        except StopIteration: # aggregate().next() 如果没找到文档会抛出 StopIteration
+            me = None
 
     if not me:
         print("❌ 数据库没用户，请先运行生成脚本！")

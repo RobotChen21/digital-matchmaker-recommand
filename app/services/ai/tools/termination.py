@@ -275,17 +275,6 @@ class DialogueTerminationManager:
         if num_turns < min_turns:
             return False, TerminationSignal(should_terminate=False, reason=None, confidence=1.0, explanation=f"未达到最小轮数 {min_turns}")
         
-        if len(conversation) >= 2:
-            last_user_msg = None
-            for msg in reversed(conversation):
-                if msg.get("role") == "user":
-                    last_user_msg = msg.get("content", "")
-                    break
-            if last_user_msg:
-                hesitancy_signal = self.hesitancy_detector.detect(last_user_msg, conversation)
-                if hesitancy_signal.should_terminate and hesitancy_signal.confidence > 0.7:
-                    return True, hesitancy_signal
-        
         info_signal = self.info_detector.detect(conversation, min_turns)
         if info_signal.should_terminate and info_signal.confidence > 0.8:
             return True, info_signal

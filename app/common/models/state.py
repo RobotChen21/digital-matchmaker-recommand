@@ -37,4 +37,5 @@ class MatchmakingState(TypedDict):
     
     # 6. 用户画像上下文
     current_user_gender: Optional[str] # 当前用户性别
-    current_user_summary: Optional[str] # 当前用户画像摘要
+    current_user_summary: Optional[str] # 当前用户基础信息+画像摘要
+    current_user_profile: Optional[Dict] # [NEW] 当前用户完整画像结构体
