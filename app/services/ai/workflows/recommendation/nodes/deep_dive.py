@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from bson import ObjectId
+from datetime import datetime, date
 
 from app.core.config import settings
 from app.core.llm import get_llm
@@ -10,7 +12,6 @@ class DeepDiveNode:
     def __init__(self, db_manager, chroma_manager):
         self.db = db_manager
         self.chroma = chroma_manager
-        # 稍微高一点，更有情感
         self.llm = get_llm(temperature=0.7)
         
         self.deep_answer_chain = (
@@ -59,7 +60,6 @@ class DeepDiveNode:
                     
         # 策略 C: 序号匹配 (如 "第二个")
         if not target_candidate:
-            # 简单的中文数字映射
             cn_nums = {"一": 0, "二": 1, "三": 2}
             for cn, idx in cn_nums.items():
                 if f"第{cn}" in target_name and idx < len(candidates):
@@ -78,13 +78,11 @@ class DeepDiveNode:
         print(f"🕵️ [DeepDive] 深入分析: {target_candidate['nickname']}")
         
         # 2. 准备数据
-        # 查全量画像 (Ranking 阶段可能没查全所有子字段)
         uid = ObjectId(target_candidate['id'])
         profile_doc = self.db.db["users_profile"].find_one({"user_id": uid})
         persona_doc = self.db.users_persona.find_one({"user_id": uid})
         
         # 3. 检索聊天记录 (作为佐证)
-        # 用用户的具体问题作为 Query
         query = state['current_input']
         docs = self.chroma.retrieve_related_context(
             query, 
@@ -99,7 +97,7 @@ class DeepDiveNode:
             res = self.deep_answer_chain.invoke({
                 "name": target_candidate['nickname'],
                 "user_input": state['current_input'],
-                "basic_info": f"{target_candidate.get('age', '?')}岁, {target_candidate.get('city')}, {persona_doc.get('persona', {}).get('occupation')}",
+                "basic_info": f"{self._calc_age(self.db.users_basic.find_one({'_id':uid}).get('birthday'))}岁, {self.db.users_basic.find_one({'_id':uid}).get('city')}, {persona_doc.get('persona', {}).get('occupation')}",
                 "personality": str(profile_doc.get('personality_profile', {})),
                 "values": str(profile_doc.get('values_profile', {})),
                 "love_style": str(profile_doc.get('love_style_profile', {})),
@@ -111,3 +109,19 @@ class DeepDiveNode:
             state['reply'] = "哎呀，分析这位嘉宾时出了点小差错，请稍后再试。"
             
         return state
+
+    def _calc_age(self, birthday_val):
+        if not birthday_val: return 0
+        try:
+            # 统一转为 date 对象进行计算
+            if isinstance(birthday_val, datetime):
+                b_date = birthday_val.date()
+            elif isinstance(birthday_val, date):
+                b_date = birthday_val
+            else:
+                return 0
+                
+            today = date.today()
+            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
+        except:
+            return 0

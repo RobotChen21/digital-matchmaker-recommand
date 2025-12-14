@@ -68,6 +68,7 @@ class FamilyProfile(BaseModel):
     parents_occupation: Optional[str] = Field(None, description="父母职业")
     siblings: Optional[str] = Field(None, description="兄弟姐妹情况")
     family_economy_level: Optional[str] = Field(None, description="家庭经济状况")
+    family_atmosphere: Optional[str] = Field(None, description="家庭氛围与状况 (如: 和睦、离异、重组家庭)")
 
 # 10. 约会偏好
 class DatingPreferences(BaseModel):

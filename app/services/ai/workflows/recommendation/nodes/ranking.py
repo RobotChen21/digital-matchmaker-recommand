@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, date
 from app.common.models.state import MatchmakingState
 
 class RankingNode:
@@ -115,11 +115,15 @@ class RankingNode:
     def _calc_age(self, birthday_val):
         if not birthday_val: return 0
         try:
+            # 统一转为 date 对象进行计算
             if isinstance(birthday_val, datetime):
-                return datetime.now().year - birthday_val.year
-            elif isinstance(birthday_val, str):
-                birth_year = int(birthday_val.split('-')[0])
-                return datetime.now().year - birth_year
-            return 0
+                b_date = birthday_val.date()
+            elif isinstance(birthday_val, date):
+                b_date = birthday_val
+            else:
+                return 0
+                
+            today = date.today()
+            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
         except:
             return 0

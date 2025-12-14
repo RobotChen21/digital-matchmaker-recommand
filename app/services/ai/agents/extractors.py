@@ -118,12 +118,12 @@ class LifestyleExtractor(BaseProfileExtractor):
         super().__init__(llm, LifestyleProfile)
         
     def _get_system_prompt(self) -> str:
-        return """你负责提取用户的生活习惯。
+        return """你负责提取用户的生活习惯。请用**简短的短语或一句话概括**。
         
-        - 作息: 早睡早起 / 熬夜修仙 / 不规律
-        - 运动: 健身房常客 / 偶尔跑步 / 躺平
-        - 社交: 社牛 / 宅 / 只跟熟人玩
-        - 烟酒: 抽烟 / 喝酒 / 不沾 / 偶尔"""
+        - 作息: 例如“早睡早起”、“经常熬夜”、“不规律”。
+        - 运动: 例如“健身房常客”、“偶尔跑步”、“不怎么运动”。
+        - 社交: 例如“社牛”、“宅家”、“只跟熟人玩”。
+        - 烟酒: 例如“抽烟”、“偶尔喝酒”、“不沾烟酒”。"""
 
 class LoveStyleExtractor(BaseProfileExtractor):
     """恋爱风格分析 Agent"""
@@ -131,11 +131,11 @@ class LoveStyleExtractor(BaseProfileExtractor):
         super().__init__(llm, LoveStyleProfile)
         
     def _get_system_prompt(self) -> str:
-        return """你是一位情感咨询师，分析用户的依恋类型和恋爱风格。
+        return """你是一位情感咨询师，分析用户的依恋类型和恋爱风格。请用短语或一句话概括。
         
-        - 依恋类型: 安全型 / 焦虑型 / 回避型 / 恐惧型
-        - 爱的语言: 喜欢怎么表达爱？(服务/言辞/礼物/接触/时间)
-        - 约会风格: 慢热 / 激情 / 务实 / 浪漫"""
+        - 依恋类型: 例如“安全型”、“焦虑型”、“回避型”、“恐惧型”。
+        - 爱的语言: 例如“服务的行动”、“肯定的言辞”、“礼物”、“身体接触”、“高质量时间”。
+        - 约会风格: 例如“慢热”、“激情”、“务实”、“浪漫”。"""
 
 class RiskExtractor(BaseProfileExtractor):
     """风险分析 Agent"""
@@ -156,9 +156,9 @@ class EducationExtractor(BaseProfileExtractor):
         
     def _get_system_prompt(self) -> str:
         return """提取用户的教育信息。
-        - 学历: 本科/硕士/博士/专科
-        - 学校类型: 985/211/海外QS100/双非
-        - 学校/专业: 具体名称"""
+        - 学历: 例如“本科”、“硕士”、“博士”、“专科”等。
+        - 学校类型: 例如“985”、“211”、“海外QS100”、“双非”等。
+        - 学校/专业: 具体名称，例如“清华大学计算机科学与技术”。"""
 
 class OccupationExtractor(BaseProfileExtractor):
     """职业背景提取 Agent"""
@@ -167,9 +167,9 @@ class OccupationExtractor(BaseProfileExtractor):
         
     def _get_system_prompt(self) -> str:
         return """提取用户的工作信息。
-        - 职位/行业
-        - 工作风格: 996/轻松/体制内
-        - 收入水平: 如果用户提到，请记录（如：年薪30w+）。"""
+        - 职位/行业: 例如“软件工程师/互联网”、“老师/教育”。
+        - 工作风格: 例如“996”、“轻松”、“体制内”、“自由职业”。
+        - 收入水平: 例如“年薪30w+”、“中等偏上”，如果用户提到，请记录。"""
 
 class FamilyExtractor(BaseProfileExtractor):
     """家庭背景提取 Agent"""
@@ -177,10 +177,11 @@ class FamilyExtractor(BaseProfileExtractor):
         super().__init__(llm, FamilyProfile)
         
     def _get_system_prompt(self) -> str:
-        return """提取用户的家庭原生家庭信息。
-        - 独生子女？兄弟姐妹？
-        - 父母健康/职业/退休？
-        - 家庭经济状况？"""
+        return """提取用户的家庭原生家庭信息。请用短语或一句话概括。
+        - 独生子女？兄弟姐妹？例如“独生子女”、“有姐弟”。
+        - 父母健康/职业/退休？例如“父母健在，已退休”、“母亲是教师”。
+        - 家庭经济状况？例如“小康”、“富裕”、“普通”。
+        - 家庭氛围与状况？**重点提取**：是否离异、单亲、重组家庭、是否和睦、父母关系如何。"""
 
 class DatingPrefExtractor(BaseProfileExtractor):
     """择偶偏好提取 Agent"""
@@ -188,7 +189,7 @@ class DatingPrefExtractor(BaseProfileExtractor):
         super().__init__(llm, DatingPreferences)
         
     def _get_system_prompt(self) -> str:
-        return """提取用户对另一半的要求。
-        - 年龄/城市要求
-        - Priorities (加分项): 必须有的特质
-        - Dealbreakers (雷点): 绝对不能接受的特质"""
+        return """提取用户对另一半的要求。请用短语或一句话概括。
+        - 年龄/城市要求: 例如“比我小5岁以内”、“同城”。
+        - Priorities (加分项): 例如“必须有共同爱好”、“希望TA有上进心”。
+        - Dealbreakers (雷点): 例如“绝对不能接受抽烟”、“不接受异地恋”。"""

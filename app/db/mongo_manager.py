@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
 from bson import ObjectId
 from pymongo import MongoClient
@@ -10,10 +10,17 @@ class MongoDBManager:
     def __init__(self, uri: str, db_name: str):
         self.client = MongoClient(uri)
         self.db = self.client[db_name]
-        self.users_basic = self.db["users_basic"] # 恢复为使用原始 users_basic 集合
+        
+        # Collections
+        self.users_basic = self.db["users_basic"]
         self.users_persona = self.db["users_persona"]
         self.onboarding_dialogues = self.db["users_onboarding_dialogues"]
         self.chat_records = self.db["chat_records"]
+        self.users_auth = self.db["users_auth"] # 新增认证表
+        
+        # Indexes
+        # 确保 account 唯一
+        self.users_auth.create_index("account", unique=True)
 
     def insert_user_with_persona(self, user_data: Dict[str, Any],
                                  persona_data: Dict[str, Any]) -> ObjectId:
@@ -33,6 +40,20 @@ class MongoDBManager:
         self.users_persona.insert_one(persona_doc)
 
         return user_id
+
+    def create_auth_user(self, account: str, password_hash: str, user_id: ObjectId):
+        """创建认证用户"""
+        auth_data = {
+            "account": account,
+            "password_hash": password_hash,
+            "user_id": user_id,
+            "created_at": datetime.now()
+        }
+        self.users_auth.insert_one(auth_data)
+
+    def get_auth_user_by_account(self, account: str) -> Optional[Dict]:
+        """根据账号查找认证信息"""
+        return self.users_auth.find_one({"account": account})
 
     def get_user_with_persona(self, user_id: ObjectId) -> Tuple[Dict, Dict]:
         """获取用户信息和性格种子"""

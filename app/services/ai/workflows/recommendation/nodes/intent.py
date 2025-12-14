@@ -1,19 +1,24 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime
+from datetime import datetime, date
 from bson import ObjectId
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.config import settings
-from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
+from app.core.env_utils import API_KEY, BASE_URL
 from app.services.ai.workflows.recommendation.state import IntentOutput
 
 class IntentNode:
     def __init__(self, db_manager):
         self.db = db_manager
-        # 意图识别需要精确
-        self.llm = get_llm(temperature=0)
+        self.llm = ChatOpenAI(
+            model=settings.llm.model_name,
+            temperature=0,
+            api_key=API_KEY,
+            base_url=BASE_URL,
+        )
         
         self.intent_parser = PydanticOutputParser(pydantic_object=IntentOutput)
         self.intent_chain = (
@@ -31,13 +36,26 @@ class IntentNode:
                 - 如果是 `search_candidate`: 提取 `match_policy` 和 `keywords`。
                 - 如果是 `deep_dive`: 提取 `target_person` (名字或 "第一个人")。**如果用户使用了代词（如"她"、"他"、"这个人"），请将 target_person 设为 "THE_LAST_ONE"**。
                 
+                【任务 3: 提取关键词 (keywords)】
+                提取用于语义检索的关键词。
+                **重要**：
+                1. 请包含 **学历、职业、工作内容** 等半硬性指标 (因为它们不在Mongo索引中)。
+                2. 请包含 **兴趣、性格、价值观** 等软性描述。
+                3. **请排除** 城市、年龄、身高、性别 等硬性指标 (因为它们已经用于数据库筛选了)。
+                
+                例如："找杭州的985程序员，喜欢滑雪" -> keywords: "985 程序员 喜欢滑雪" (去掉了杭州)
+                
                 输出JSON: {format_instructions}"""
             ) | self.llm | self.intent_parser
         )
         
         # [NEW] 通用对话 Chain (Chat/Consultation)
-        # 闲聊需要灵活性
-        self.chitchat_llm = get_llm(temperature=0.7)
+        self.chitchat_llm = ChatOpenAI(
+            model=settings.llm.model_name,
+            temperature=0.7, 
+            api_key=API_KEY,
+            base_url=BASE_URL,
+        )
         self.chitchat_chain = (
             ChatPromptTemplate.from_template(
                 """你是一位**资深婚恋顾问**，说话**专业、知性、温暖且有边界感**。
@@ -50,7 +68,7 @@ class IntentNode:
                 2. 如果是**情感咨询**或**自我提升**问题，请结合用户画像给出客观、建设性的建议。
                 3. **严禁**使用过于亲昵或油腻的称呼（如“弟弟”、“姐姐”、“亲”），保持专业形象。
                 4. 回复要言之有物，不要空洞的套话。
-                
+                5. 如果话题偏离太远，可以幽默地拉回来，提醒他你最擅长的是帮他找对象。
                 请直接输出回复内容，不要带任何前缀。"""
             ) | self.chitchat_llm
         )
@@ -62,7 +80,7 @@ class IntentNode:
             uid = ObjectId(state['user_id'])
             user_basic = self.db.users_basic.find_one({"_id": uid})
             if not user_basic:
-                user_basic = {"gender": "unknown", "city": "unknown", "birthday": "2000-01-01"}
+                user_basic = {"gender": "unknown", "city": "unknown", "birthday": date(2000, 1, 1)}
             
             state['current_user_gender'] = user_basic.get('gender')
             state['current_user_summary'] = f"性别:{user_basic.get('gender')}, 城市:{user_basic.get('city')}, 年龄:{self._calc_age(user_basic.get('birthday'))}"
@@ -117,7 +135,6 @@ class IntentNode:
 
     def chitchat(self, state: MatchmakingState):
         """通用对话/咨询节点"""
-        # 升级为 LLM 生成
         try:
             res = self.chitchat_chain.invoke({
                 "user_summary": state.get('current_user_summary', '未知用户'),
@@ -132,11 +149,15 @@ class IntentNode:
     def _calc_age(self, birthday_val):
         if not birthday_val: return 0
         try:
+            # 统一转为 date 对象进行计算
             if isinstance(birthday_val, datetime):
-                return datetime.now().year - birthday_val.year
-            elif isinstance(birthday_val, str):
-                birth_year = int(birthday_val.split('-')[0])
-                return datetime.now().year - birth_year
-            return 0
+                b_date = birthday_val.date()
+            elif isinstance(birthday_val, date):
+                b_date = birthday_val
+            else:
+                return 0
+                
+            today = date.today()
+            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
         except:
             return 0

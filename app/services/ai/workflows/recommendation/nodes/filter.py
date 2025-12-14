@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, date
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
@@ -76,6 +77,11 @@ class FilterNode:
             })
             query = res.mongo_query if res.mongo_query else {}
             
+            # [Safety] 清理可能存在的幻觉字段 (如 age, interests)
+            query.pop('age', None)
+            query.pop('interests', None)
+            query.pop('hobbies', None)
+            
             # 1. 处理年龄区间
             age_min = res.age_min
             age_max = res.age_max
@@ -83,8 +89,10 @@ class FilterNode:
                 current_year = datetime.now().year
                 if age_max:
                     max_birth_year = current_year - age_max
+                    # PyMongo requires datetime.datetime, not datetime.date
                     min_birthday = datetime(max_birth_year, 1, 1)
                     query["birthday"] = {"$gte": min_birthday}
+                    print(f"   -> Calculated birthday min: {min_birthday.strftime('%Y-%m-%d')}")
                 if age_min:
                     min_birth_year = current_year - age_min
                     max_birthday = datetime(min_birth_year, 12, 31)
@@ -92,33 +100,11 @@ class FilterNode:
                         query["birthday"]["$lte"] = max_birthday
                     else:
                         query["birthday"] = {"$lte": max_birthday}
-
-            # 2. 处理 BMI 过滤 ($expr)
-            bmi_min = res.bmi_min
-            bmi_max = res.bmi_max
-            if bmi_min or bmi_max:
-                # BMI = weight / (height/100)^2
-                bmi_expr = {
-                    "$divide": ["$weight", {"$pow": [{"$divide": ["$height", 100]}, 2]}]
-                }
-                
-                expr_conds = []
-                if bmi_min:
-                    expr_conds.append({"$gte": [bmi_expr, bmi_min]})
-                if bmi_max:
-                    expr_conds.append({"$lte": [bmi_expr, bmi_max]})
-                
-                if expr_conds:
-                    if len(expr_conds) == 1:
-                        query["$expr"] = expr_conds[0]
-                    else:
-                        query["$expr"] = {"$and": expr_conds}
-                
-                print(f"   -> Calculated BMI filter: {bmi_min}-{bmi_max}")
-
+                    print(f"   -> Calculated birthday max: {max_birthday.strftime('%Y-%m-%d')}")
+            
             print(f"   -> LLM Query (before gender): {query}")
             
-            # 3. 强制注入性别筛选
+            # 2. 强制注入性别筛选
             current_gender = state.get('current_user_gender')
             target_gender = None
             if current_gender:
@@ -129,7 +115,7 @@ class FilterNode:
             if target_gender:
                 query['gender'] = target_gender
 
-            # 4. 排除自己 和 排除已见过的候选人 ("换一批")
+            # 3. 排除自己 和 排除已见过的候选人 ("换一批")
             exclude_ids = [ObjectId(state['user_id'])]
             
             seen_ids = state.get('seen_candidate_ids', [])

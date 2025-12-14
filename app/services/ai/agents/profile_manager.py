@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, date # 导入 date
 from langchain_openai import ChatOpenAI
 from app.services.ai.agents.extractors import (
     PersonalityExtractor, InterestExtractor, ValuesExtractor,
@@ -34,21 +34,33 @@ class ProfileService:
     def extract_from_dialogue(self, dialogue_text: str) -> Dict[str, Any]:
         """
         输入对话文本，运行所有 Agent，返回聚合后的画像字典。
+        采用多线程并行执行，大幅提升提取速度。
         """
+        import concurrent.futures
+        
         full_profile_data = {}
         
-        # 并行或串行执行提取 (目前为串行，未来可优化为并行)
-        for field_name, agent in self.agents.items():
+        # 定义单个任务函数
+        def _run_agent(name, agent_instance):
             try:
-                result = agent.extract(dialogue_text)
-                if result:
-                    # 将 Pydantic 模型转为 dict，并移除 None 值
-                    full_profile_data[field_name] = result.model_dump(exclude_none=True)
-                else:
-                    full_profile_data[field_name] = None
+                result = agent_instance.extract(dialogue_text)
+                return name, result.model_dump(exclude_none=True) if result else None
             except Exception as e:
-                print(f"⚠️ [ProfileService] {field_name} 提取失败: {e}")
-                full_profile_data[field_name] = None
+                print(f"⚠️ [ProfileService] {name} 提取失败: {e}")
+                return name, None
+
+        # 并行执行
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # 提交所有任务
+            future_to_agent = {
+                executor.submit(_run_agent, name, agent): name 
+                for name, agent in self.agents.items()
+            }
+            
+            # 获取结果
+            for future in concurrent.futures.as_completed(future_to_agent):
+                name, data = future.result()
+                full_profile_data[name] = data
         
         return full_profile_data
 
@@ -67,15 +79,11 @@ class ProfileService:
         """将结构化画像转换为自然语言摘要 (用于向量化)"""
         parts = []
         
-        # 辅助函数: 计算年龄
-        def _get_age(bday):
-            if not bday: return "未知"
+        def _get_age(bday: date): # 明确类型为 date
+            if not bday or not isinstance(bday, date): return "未知"
             try:
-                if isinstance(bday, datetime):
-                    return str(datetime.now().year - bday.year)
-                elif isinstance(bday, str):
-                    return str(datetime.now().year - int(bday.split('-')[0]))
-                return "未知"
+                today = date.today()
+                return str(today.year - bday.year - ((today.month, today.day) < (bday.month, bday.day)))
             except:
                 return "未知"
 
@@ -86,7 +94,7 @@ class ProfileService:
         # 职业
         occ = profile.get('occupation_profile')
         if occ:
-            parts.append(f"职业是{occ.get('job_title', '未知')}，行业是{occ.get('industry', '未知')}。")
+            parts.append(f"职业是{occ.get('job_title', '未知')}, 行业是{occ.get('industry', '未知')}。")
         
         # 性格
         pers = profile.get('personality_profile')

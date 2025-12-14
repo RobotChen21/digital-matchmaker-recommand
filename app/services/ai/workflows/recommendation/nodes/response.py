@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from datetime import date
 
 from app.core.config import settings
-from app.core.llm import get_llm
+from app.core.llm import get_llm # 从 get_llm 导入
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import EvidenceOutput
 
@@ -121,21 +123,6 @@ class ResponseNode:
     def generate_response(self, state: MatchmakingState):
         """Step 5: 生成回复"""
         candidates = state.get('final_candidates', [])
-        current_gender = state.get('current_user_gender')
-        
-        # [Safety Check] 性别双重校验 (防止脏数据导致同性推荐)
-        valid_candidates = []
-        for c in candidates:
-            # 简单逻辑: 必须是异性
-            if current_gender == 'male' and c.get('gender') == 'male':
-                print(f"   ⚠️ 剔除性别不符候选人: {c.get('nickname')} ({c.get('gender')})")
-                continue
-            if current_gender == 'female' and c.get('gender') == 'female':
-                print(f"   ⚠️ 剔除性别不符候选人: {c.get('nickname')} ({c.get('gender')})")
-                continue
-            valid_candidates.append(c)
-            
-        candidates = valid_candidates
         
         if not candidates:
             # [NEW] 智能失败回复
@@ -166,14 +153,20 @@ class ResponseNode:
                  state['reply'] = "为您找到以下嘉宾:\n" + candidates_info
 
         print(f"🤖 [Response Done]: {state['reply'][:50]}...")
-        
-        # [NEW] 更新已见过的候选人列表 (用于"换一批"功能)
-        seen = state.get('seen_candidate_ids', [])
-        if seen is None: seen = [] # 防御性编程
-        
-        for c in candidates:
-            if c['id'] not in seen:
-                seen.append(c['id'])
-        state['seen_candidate_ids'] = seen
-        
         return state
+
+    def _calc_age(self, birthday_val):
+        if not birthday_val: return 0
+        try:
+            # 统一转为 date 对象进行计算
+            if isinstance(birthday_val, datetime):
+                b_date = birthday_val.date()
+            elif isinstance(birthday_val, date):
+                b_date = birthday_val
+            else:
+                return 0
+                
+            today = date.today()
+            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
+        except:
+            return 0
