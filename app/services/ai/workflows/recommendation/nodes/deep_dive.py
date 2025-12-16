@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from bson import ObjectId
-from datetime import datetime, date
-
-from app.core.config import settings
 from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
+from app.core.utils.cal_utils import calc_age
+
 
 class DeepDiveNode:
     def __init__(self, db_manager, chroma_manager):
@@ -97,7 +95,7 @@ class DeepDiveNode:
             res = self.deep_answer_chain.invoke({
                 "name": target_candidate['nickname'],
                 "user_input": state['current_input'],
-                "basic_info": f"{self._calc_age(self.db.users_basic.find_one({'_id':uid}).get('birthday'))}岁, {self.db.users_basic.find_one({'_id':uid}).get('city')}, {persona_doc.get('persona', {}).get('occupation')}",
+                "basic_info": f"{calc_age(self.db.users_basic.find_one({'_id':uid}).get('birthday'))}岁, {self.db.users_basic.find_one({'_id':uid}).get('city')}, {persona_doc.get('persona', {}).get('occupation')}",
                 "personality": str(profile_doc.get('personality_profile', {})),
                 "values": str(profile_doc.get('values_profile', {})),
                 "love_style": str(profile_doc.get('love_style_profile', {})),
@@ -109,19 +107,3 @@ class DeepDiveNode:
             state['reply'] = "哎呀，分析这位嘉宾时出了点小差错，请稍后再试。"
             
         return state
-
-    def _calc_age(self, birthday_val):
-        if not birthday_val: return 0
-        try:
-            # 统一转为 date 对象进行计算
-            if isinstance(birthday_val, datetime):
-                b_date = birthday_val.date()
-            elif isinstance(birthday_val, date):
-                b_date = birthday_val
-            else:
-                return 0
-                
-            today = date.today()
-            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
-        except:
-            return 0

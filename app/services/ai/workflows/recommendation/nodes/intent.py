@@ -69,8 +69,6 @@ class IntentNode:
             
             # 1. 查 Basic
             user_basic = self.db.users_basic.find_one({"_id": uid})
-            if not user_basic:
-                user_basic = {"gender": "unknown", "city": "unknown", "birthday": date(2000, 1, 1)}
             
             # 2. 查 Profile
             user_profile = self.db.profile.find_one({"_id": uid}) or {}

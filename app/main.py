@@ -9,7 +9,7 @@ app = FastAPI(
 )
 
 # ... (CORS middleware) ...
-
+#TODO需要全局重构，有些事单例设计模式，使用IOC容器，依赖注入解耦等操作，现在有点混乱
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])

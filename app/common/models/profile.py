@@ -100,3 +100,23 @@ class UserProfile(BaseModel):
     family_profile: Optional[FamilyProfile] = None
     dating_preferences: Optional[DatingPreferences] = None
     behavior_profile: Optional[BehaviorProfile] = None
+
+# --- 常量定义 ---
+REQUIRED_PROFILE_DIMENSIONS = [
+    "教育背景 - 学历 (本科/硕士/博士/专科)",
+    "教育背景 - 学校类型 (985/211/海外/双非)",
+    "教育背景 - 学校名称/专业",
+    "工作职业 - 职位/行业 (或是学生身份)",
+    "工作职业 - 工作风格 (996/轻松/体制内) [学生可免]",
+    "工作职业 - 收入水平 (如: 年薪30w+) [学生可免]",
+    "家庭背景 - 独生子女？兄弟姐妹？",
+    "家庭背景 - 父母健康/职业/退休？",
+    "家庭背景 - 家庭经济状况？",
+    "家庭背景 - 家庭氛围/父母婚姻状况(离异/重组)?",
+    # 其他非强制维度
+    "兴趣爱好 (具体的活动/投入程度)", 
+    "核心价值观 (家庭观/事业观/金钱观)", 
+    "生活方式 (烟酒/作息)", 
+    "恋爱风格 (依恋类型/粘人程度)", 
+    "约会偏好 (理想型/雷点)" 
+]

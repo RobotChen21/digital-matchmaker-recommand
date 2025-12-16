@@ -13,7 +13,7 @@ from .nodes.ranking import RankingNode
 from .nodes.response import ResponseNode
 from .nodes.deep_dive import DeepDiveNode
 from .nodes.onboarding import OnboardingNode # New
-
+#TODO 需要将聊天对话进行定期或者定量更新画像然后存入向量数据库(不是无上限，也是定量的)
 class RecommendationGraphBuilder:
     def __init__(self, db_manager: MongoDBManager, chroma_manager: ChromaManager):
         # 初始化各个 Node 类

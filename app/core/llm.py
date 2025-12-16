@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from langchain_openai import ChatOpenAI
 from app.core.config import settings
-from app.core.env_utils import API_KEY, BASE_URL
+from app.core.utils.env_utils import API_KEY, BASE_URL
 
 def get_llm(temperature: float = 0.0, model_name: str = None) -> ChatOpenAI:
     """

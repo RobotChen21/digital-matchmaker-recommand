@@ -2,6 +2,8 @@
 from bson import ObjectId
 from datetime import datetime, date
 from app.common.models.state import MatchmakingState
+from app.core.utils.cal_utils import calc_age
+
 
 class RankingNode:
     def __init__(self, db_manager):
@@ -93,7 +95,7 @@ class RankingNode:
                 basic['match_reasons'] = ", ".join(reasons)
                 
                 # 构造 summary
-                age = self._calc_age(basic.get('birthday'))
+                age = calc_age(basic.get('birthday'))
                 job = persona.get('occupation', '')
                 edu = profile_doc.get('education_profile', {}).get('highest_degree', '') if profile_doc else ''
                 
@@ -111,19 +113,3 @@ class RankingNode:
         print(f"   -> 精排完成，Top 1 得分: {final_candidates[0]['score'] if final_candidates else 0}")
         
         return state
-
-    def _calc_age(self, birthday_val):
-        if not birthday_val: return 0
-        try:
-            # 统一转为 date 对象进行计算
-            if isinstance(birthday_val, datetime):
-                b_date = birthday_val.date()
-            elif isinstance(birthday_val, date):
-                b_date = birthday_val
-            else:
-                return 0
-                
-            today = date.today()
-            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
-        except:
-            return 0

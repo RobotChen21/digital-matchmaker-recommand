@@ -34,6 +34,7 @@ chroma_manager = ChromaManager(
 rec_workflow = RecommendationWorkflow(db_manager, chroma_manager) # 传入依赖
 rec_app = rec_workflow.build_graph()
 
+#TODO 需要升级成websocket实现
 @router.post("/message", response_model=ChatResponse)
 async def chat_with_matchmaker(
     request: ChatRequest,

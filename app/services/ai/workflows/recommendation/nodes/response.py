@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from datetime import date, datetime
-
-from app.core.config import settings
 from app.core.llm import get_llm # 从 get_llm 导入
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import EvidenceOutput
@@ -154,19 +150,3 @@ class ResponseNode:
 
         print(f"🤖 [Response Done]: {state['reply'][:50]}...")
         return state
-
-    def _calc_age(self, birthday_val):
-        if not birthday_val: return 0
-        try:
-            # 统一转为 date 对象进行计算
-            if isinstance(birthday_val, datetime):
-                b_date = birthday_val.date()
-            elif isinstance(birthday_val, date):
-                b_date = birthday_val
-            else:
-                return 0
-                
-            today = date.today()
-            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
-        except:
-            return 0

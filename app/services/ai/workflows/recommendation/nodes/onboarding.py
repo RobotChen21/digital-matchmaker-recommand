@@ -5,6 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.llm import get_llm
 from app.common.models.state import MatchmakingState
+from app.core.utils.dict_utils import flatten_dict, deep_merge
 from app.services.ai.tools.termination import DialogueTerminationManager
 from app.db.mongo_manager import MongoDBManager
 from app.db.chroma_manager import ChromaManager
@@ -35,17 +36,17 @@ class OnboardingNode:
 切记：你是一个充满人情味、专业的红娘。
 
 【重要指令 - 核心KPI】:
-1. 请使用**自然口语**，就像微信聊天一样。**严禁**使用 Markdown 格式，**严禁**长篇大论，每次回复控制在 3 句话以内。
-2. **必须收集全以下三个核心维度**，如果用户没提到，一定要追问，不能跳过：
+1. **必须收集全以下三个核心维度**，如果用户没提到，一定要追问，不能跳过：
    - **教育背景**: 学历 (本科/硕士/博士/专科), 学校类型 (985/211/海外/双非), 学校名称/专业
-   - **工作职业**: 职位/行业, 工作风格 (996/轻松/体制内), 收入水平 (如果用户提到)
+   - **工作职业**: 职位/行业, 工作风格 (996/轻松/体制内), 收入水平 (如果用户提到)。**如果是学生，请改问专业/科研情况，无需问收入/工作风格**。
    - **家庭背景**: 独生子女？兄弟姐妹？, 父母健康/职业/退休？, 家庭经济状况？, 家庭氛围/父母婚姻状况(离异/重组)?
-3. 其他维度 (兴趣、性格) 可以自然穿插提问。
-
-【对话历史】:
-{history}
-
-请直接输出回复。"""
+请直接输出回复。
+2. 请使用**自然口语**，就像微信聊天一样。**严禁**使用 Markdown 格式，**严禁**长篇大论，每次回复控制在 3 句话以内。
+【已收集信息暗示】:
+{profile_completion_hint}
+(注意：此信息可能存在延迟。如果用户刚刚在【对话历史】中回答了某项信息，请以历史为准，不要重复追问。)
+【对话历史 (最近)】:
+{history}"""
             ) | self.llm
         )
         
@@ -64,22 +65,18 @@ class OnboardingNode:
     def _get_init_service(self):
         if not self._user_init_service:
             from app.services.ai.workflows.user_init import UserInitializationService
-            # 复用 llm 实例，这里需要两个 llm，所以传 self.llm 两次 (ai/user)
+            # 复用 llm 实例
             self._user_init_service = UserInitializationService(self.db, self.chroma, self.llm, self.llm)
         return self._user_init_service
 
     def process(self, state: MatchmakingState):
         """处理 Onboarding 逻辑"""
-        # NOTE:
-        # 当前 onboarding 完成判定基于对话历史（而非 profile 完整度）
-        # profile 仅在 finalize 阶段一次性生成
-
         print("📝 [Onboarding] 实时对话处理...")
         
         user_id = state['user_id']
         current_input = state['current_input']
         uid = ObjectId(user_id)
-        
+        user_basic = self.db.users_basic.find_one({"_id": ObjectId(user_id)})
         # 1. 实时保存用户输入
         user_msg = {"role": "user", "content": current_input, "timestamp": datetime.now()}
         self.db.onboarding_dialogues.update_one(
@@ -88,60 +85,103 @@ class OnboardingNode:
             upsert=True
         )
         
-        # 2. 读取完整历史 (用于检测和上下文)
+        # 2. 读取完整历史
         record = self.db.onboarding_dialogues.find_one({"user_id": uid})
         history_list = record.get('messages', []) if record else []
+
+        full_profile = self.db.profile.find_one({"user_id": uid}) or {} # 先读当前的
         
-        # 3. 判断是否完成
-        min_conversational_turns_for_check = 3 # 用户回答 3 次后开始
-        if len(history_list) >= min_conversational_turns_for_check * 2: # 至少 6 条消息
-            should_terminate, signal = self.termination_manager.should_terminate_onboarding(
-                history_list, min_turns=15, max_turns=30
-            )
-        else:
-            should_terminate = False
-            signal = None 
+        # [Strategy] 预先生成 Hint，确保如果不进 batch 更新逻辑，后续步骤也有值可用
+        profile_completion_hint = self.profile_service.generate_profile_completion_hint(profile=full_profile)
+
+        # 逻辑改为：每当用户说了 3 句话 (即积累了约 3 轮对话)，触发一次提取
+        user_msg_count = sum(1 for m in history_list if m['role'] == 'user')
         
-        if should_terminate:
-            print(f"   ✅ 检测到信息采集完成: {signal.explanation}")
+        if user_msg_count > 0 and user_msg_count % 4 == 0:
+            print(f"   🔄 触发增量画像提取 (用户已发言 {user_msg_count} 次)...")
+            # 取最近的 6 条消息作为上下文 (User + AI)
+            # 注意：history_list 只有奇数条，所以取最后 5 条可能更匹配 (U, A, U, A, U)
+            # 或者取 6 条也没关系，切片会自动处理越界
+            recent_batch = history_list[-10:]
+            # 格式化对话
+            dialogue_text = self.profile_service.format_dialogue_for_llm(recent_batch)
+            # 提取
+            extracted_data = self.profile_service.extract_from_dialogue(dialogue_text)
             
-            # 5. 原子化结算 (Extract -> Save -> Vectorize)
-            success = self._get_init_service().finalize_user_onboarding(user_id)
-            user_basic = self.db.users_basic.find_one({"_id": uid}) or {}
-            current_profile = self.db.profile.find_one({"user_id": uid}) or {}
-
-            if success:
-                # 生成结束语并保存
-                current_profile_summary_text = ProfileService.generate_profile_summary(user_basic, current_profile)
-                res = self.finish_chain.invoke({"current_profile_summary": current_profile_summary_text})
-                reply = res.content
+            # 更新 DB (Merge)
+            if extracted_data:
+                # 过滤空值
+                update_payload = {k: v for k, v in extracted_data.items() if v}
                 
-                # 保存 AI 回复
-                ai_msg = {"role": "ai", "content": reply, "timestamp": datetime.now()}
-                self.db.onboarding_dialogues.update_one(
-                    {"user_id": uid},
-                    {"$push": {"messages": ai_msg}}
-                )
-                state['reply'] = reply
-                return state
-            else:
-                print("   ❌ 结算失败，回退到继续追问")
-        
-        # 6. 继续追问 (如果未完成或结算失败)
-        print("   ⏳ 继续追问...")
+                if update_payload:
+                    # [FIX] Flatten specifically for nested updates to avoid overwriting siblings
+                    flat_update = flatten_dict(update_payload)
+                    flat_update["updated_at"] = datetime.now()
+                    
+                    self.db.profile.update_one(
+                        {"user_id": uid},
+                        {"$set": flat_update},
+                        upsert=True
+                    )
+                    print(f"   -> 增量更新了字段: {list(flat_update.keys())}")
+                    
+                    # 更新内存中的 profile 用于后续判断 (Deep Merge to avoid data loss)
+                    deep_merge(full_profile, update_payload)
+                    
+                    # [FIX] 画像更新了，重新生成 Hint 以便 Termination Check 使用最新数据
+                    profile_completion_hint = self.profile_service.generate_profile_completion_hint(profile=full_profile)
 
-        history_for_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in history_list[-6:]])
+            # 4. 判断是否完成
+            min_conversational_turns_for_check = 3
+            if len(history_list) >= min_conversational_turns_for_check * 2:
+                should_terminate, signal = self.termination_manager.should_terminate_onboarding(
+                    # 传递生成的 hint text
+                    profile_completion_hint,
+                    history_list, min_conversational_turns=30, max_turns=50
+                )
+            else:
+                should_terminate = False
+                signal = None
+        
+            if should_terminate:
+                print(f"   ✅ 检测到信息采集完成: {signal.explanation}")
+
+                # 5. 原子化结算
+                success = self._get_init_service().finalize_user_onboarding(user_id)
+
+                if success:
+                    # 读取最新画像用于结束语
+
+                    full_profile = self.db.profile.find_one({"user_id": uid}) or {} # 重新读一次确保最新
+                    current_profile_summary_text = ProfileService.generate_profile_summary(user_basic, full_profile)
+
+                    res = self.finish_chain.invoke({"current_profile_summary": current_profile_summary_text})
+                    reply = res.content
+
+                    ai_msg = {"role": "ai", "content": reply, "timestamp": datetime.now()}
+                    self.db.onboarding_dialogues.update_one({"user_id": uid}, {"$push": {"messages": ai_msg}})
+
+                    state['reply'] = reply
+                    return state
+                else:
+                    print("   ❌ 结算失败，回退到继续追问")
+        
+        # 6. 继续追问
+        print("   ⏳ 继续追问...")
+        
+        # profile_completion_hint 已经在上面生成了，直接用
+
+        history_for_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in history_list[-10:]]) # 限制 History 长度
+        
         res = self.ask_chain.invoke({
+            "profile_completion_hint": profile_completion_hint, # 传递 hint
             "history": history_for_prompt
         })
         reply = res.content
         
         # 保存 AI 回复
         ai_msg = {"role": "ai", "content": reply, "timestamp": datetime.now()}
-        self.db.onboarding_dialogues.update_one(
-            {"user_id": uid},
-            {"$push": {"messages": ai_msg}}
-        )
+        self.db.onboarding_dialogues.update_one({"user_id": uid}, {"$push": {"messages": ai_msg}})
         
         state['reply'] = reply
         return state

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Any, Union
 import jwt
 import bcrypt # 直接使用 bcrypt
-from app.core.env_utils import SECRET_KEY, ALGORITHM
+from app.core.utils.env_utils import SECRET_KEY, ALGORITHM
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7天过期
 

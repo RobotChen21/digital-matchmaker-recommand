@@ -6,6 +6,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.common.models.termination import TerminationReason, TerminationSignal
+from app.services.ai.agents.profile_manager import ProfileService # 导入 ProfileService
+from app.common.models.profile import REQUIRED_PROFILE_DIMENSIONS # 导入公共常量
 
 class HesitancyDetector:
     """检测用户是否不想继续对话"""
@@ -45,8 +47,6 @@ class HesitancyDetector:
         return self._parse_response(response.content)
     
     def _format_history(self, history: List[Dict]) -> str:
-        if not history:
-            return "(对话刚开始)"
         lines = []
         for msg in history[-5:]:
             role = "AI" if msg.get("role") == "ai" else "用户"
@@ -78,39 +78,17 @@ class InfoCompletenessDetector:
     def __init__(self, llm: ChatOpenAI):
         self.llm = llm
         self.parser = PydanticOutputParser(pydantic_object=TerminationSignal)
-        self.required_dimensions = [
-            "教育背景 - 学历 (本科/硕士/博士/专科)",
-            "教育背景 - 学校类型 (985/211/海外/双非)",
-            "教育背景 - 学校名称/专业", # 合并为一个细项
-            "工作职业 - 职位/行业",
-            "工作职业 - 工作风格 (996/轻松/体制内)",
-            "工作职业 - 收入水平 (如: 年薪30w+)",
-            "家庭背景 - 独生子女？兄弟姐妹？",
-            "家庭背景 - 父母健康/职业/退休？",
-            "家庭背景 - 家庭经济状况？",
-            # 其他非强制维度
-            "兴趣爱好 (具体的活动/投入程度)", 
-            "核心价值观 (家庭观/事业观/金钱观)", 
-            "生活方式 (烟酒/作息)", 
-            "恋爱风格 (依恋类型/粘人程度)", 
-            "约会偏好 (理想型/雷点)" 
-        ]
-        # 强制收集的核心三类及其子字段
-        # 这个列表只用于LLM的Prompt，实际判断由LLM根据其对Prompt的理解来完成
-        self.mandatory_core_dimensions = { 
-            "教育背景": ["学历 (本科/硕士/博士/专科)", "学校类型 (985/211/海外/双非)", "学校名称/专业"],
-            "工作职业": ["职位/行业", "工作风格 (996/轻松/体制内)", "收入水平"],
-            "家庭背景": ["独生子女？兄弟姐妹？", "父母健康/职业/退休？", "家庭经济状况？"]
-        }
+        # 精细化需要收集的维度 (仅供 LLM 参考，实际判断基于 profile_summary)
+        self.required_dimensions_for_prompt = REQUIRED_PROFILE_DIMENSIONS
         
         self.prompt = ChatPromptTemplate.from_template(
-            """你是 AI 红娘的数据质量官，正在评估是否已经收集到足够的用户画像数据。
+            """你是 AI 红娘的数据质量官，正在评估用户画像数据是否已充分收集。
+
+【用户当前画像概要】:
+{profile_completion_hint}
 
 【必须收集的核心维度 - 完整列表】:
 {required_dimensions}
-
-完整对话记录:
-{full_conversation}
 
 请严格评估:
 1. 哪些维度已经**充分收集**? (例如: 明确知道是硕士、985、程序员、年薪50w+、独生子女、父母退休健康、家庭富裕)
@@ -119,9 +97,9 @@ class InfoCompletenessDetector:
 
 【评估标准 - 极严 (Hard Constraints)】:
 - **以下所有子维度，必须全部收集且明确**。如果其中任意一项缺失或模糊，且用户态度配合，就**绝对不能**结束访谈，必须让红娘继续追问。
-  1. **教育背景**: 必须明确学历 (本科/硕士/博士/专科), 学校类型 (985/211/海外/双非), 学校名称/专业
-  2. **工作职业**: 必须明确职位/行业, 工作风格 (996/轻松/体制内), 收入水平 (如果用户提到)
-  3. **家庭背景**: 必须明确独生子女？兄弟姐妹？, 父母健康/职业/退休？, 家庭经济状况？, **家庭氛围/父母婚姻状况(离异/重组)?**
+  1. **教育背景**: 学历 (本科/硕士/博士/专科), 学校类型 (985/211/海外/双非), 学校名称/专业
+  2. **工作职业**: 职位/行业, 工作风格 (996/轻松/体制内), 收入水平 (如果用户提到)
+  3. **家庭背景**: 独生子女？兄弟姐妹？, 父母健康/职业/退休？, 家庭经济状况？, 家庭氛围/父母婚姻状况(离异/重组)?
 - 只有当以上所有强制维度都已清晰无误，且用户明确表示“不想说了”、“太累了”时，才允许结束访谈。
 - 其他非强制核心维度 (如兴趣、价值观、恋爱观) 尽量收集。
 
@@ -130,14 +108,15 @@ class InfoCompletenessDetector:
 {format_instructions}"""
         )
     
-    def detect(self, full_conversation: List[Dict], min_turns: int = 8) -> TerminationSignal:
-        if len(full_conversation) < min_turns * 2:
-            return TerminationSignal(should_terminate=False, reason=None, confidence=1.0, explanation=f"对话不足 {min_turns} 轮")
-        
+    def detect(self, profile_completion_hint_text: str) -> TerminationSignal:
+        """
+        根据结构化画像摘要来判断是否结束 Onboarding。
+        直接接收外部生成好的 hint text，避免重复调用 LLM。
+        """
         chain = self.prompt | self.llm
         response = chain.invoke({
-            "required_dimensions": ", ".join(self.required_dimensions),
-            "full_conversation": self._format_conversation(full_conversation),
+            "profile_completion_hint": profile_completion_hint_text,
+            "required_dimensions": "\n".join(self.required_dimensions_for_prompt),
             "format_instructions": self.parser.get_format_instructions()
         })
         return self._parse_response(response.content)
@@ -157,7 +136,7 @@ class InfoCompletenessDetector:
             elif content.startswith("```"):
                 content = content.split("```")[1].split("```")[0].strip()
             data = json.loads(content)
-            return TerminationSignal(should_terminate=data["should_terminate"], reason=data.get("reason"), confidence=data["confidence"], explanation=data["explanation"])
+            return TerminationSignal(should_terminate=data["should_terminate"], reason=data.get("reason"), confidence=data["confidence"], explanation=data.get("explanation", ""))
         except json.JSONDecodeError as e:
             print(f"❌ InfoCompletenessDetector JSON parsing failed: {e}")
             print(f"   Original content: {content}")
@@ -168,133 +147,40 @@ class InfoCompletenessDetector:
             return TerminationSignal(should_terminate=False, reason=None, confidence=0.0, explanation=f"解析失败: {e}")
 
 
-class NaturalEndDetector:
-    """检测社交对话是否自然结束"""
-    
-    def __init__(self, llm: ChatOpenAI):
-        self.llm = llm
-        self.parser = PydanticOutputParser(pydantic_object=TerminationSignal)
-
-        self.prompt = ChatPromptTemplate.from_template(
-            """你是对话分析专家,判断两个人的聊天是否到了自然结束点。
-
-最近对话(最后8条):
-{recent_conversation}
-
-完整对话统计:
-- 总消息数: {total_messages}
-- 持续时间: {duration}
-
-请分析是否出现以下信号:
-1. 话题耗尽: 开始重复、无新话题、沉默增多
-2. 礼貌结束: "今天聊得很开心"、"改天再聊"、"要去忙了"
-3. 约定后续: "那我们周末见"、"加个微信吧"
-4. 自然收尾: 相互告别、对话完整闭环
-5. 冷场: 连续简短回复、"嗯嗯"、"好的"
-
-注意: 20条消息以下不应该结束(还在热聊期)
-
-请输出 JSON 格式,不要任何解释或 Markdown 标记。
-
-{format_instructions}"""
-        )
-    
-    def detect(self, full_conversation: List[Dict], min_messages: int = 20) -> TerminationSignal:
-        if len(full_conversation) < min_messages:
-            return TerminationSignal(should_terminate=False, reason=None, confidence=1.0, explanation=f"消息不足 {min_messages} 条")
-        
-        duration = self._calculate_duration(full_conversation)
-        chain = self.prompt | self.llm
-        response = chain.invoke({
-            "recent_conversation": self._format_recent(full_conversation),
-            "total_messages": len(full_conversation),
-            "duration": duration,
-            "format_instructions": self.parser.get_format_instructions()
-        })
-        return self._parse_response(response.content)
-    
-    def _format_recent(self, conversation: List[Dict]) -> str:
-        lines = []
-        for msg in conversation[-8:]:
-            sender = f"用户{msg.get('sender_id', 'A')}"
-            lines.append(f"{sender}: {msg.get('content', '')}")
-        return "\n".join(lines)
-    
-    def _calculate_duration(self, conversation: List[Dict]) -> str:
-        if not conversation or len(conversation) < 2:
-            return "刚开始"
-        first_ts = conversation[0].get("timestamp")
-        last_ts = conversation[-1].get("timestamp")
-        if first_ts and last_ts:
-            if isinstance(first_ts, str):
-                from datetime import datetime
-                try:
-                    first_ts = datetime.fromisoformat(first_ts)
-                    last_ts = datetime.fromisoformat(last_ts)
-                except:
-                    pass
-            try:
-                duration = last_ts - first_ts
-                minutes = duration.total_seconds() / 60
-                return f"{int(minutes)} 分钟"
-            except:
-                return "计算错误"
-        return "未知"
-    
-    def _parse_response(self, content: str) -> TerminationSignal:
-        try:
-            content = content.strip()
-            if content.startswith("```json"):
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif content.startswith("```"):
-                content = content.split("```")[1].split("```")[0].strip()
-            data = json.loads(content)
-            return TerminationSignal(**data)
-        except json.JSONDecodeError as e:
-            print(f"❌ NaturalEndDetector JSON parsing failed: {e}")
-            print(f"   Original content: {content}")
-            return TerminationSignal(should_terminate=False, reason=None, confidence=0.0, explanation=f"JSON解析失败: {e}")
-        except Exception as e:
-            print(f"❌ NaturalEndDetector general parsing failed: {e}")
-            print(f"   Original content: {content}")
-            return TerminationSignal(should_terminate=False, reason=None, confidence=0.0, explanation=f"解析失败: {e}")
-
-
 class DialogueTerminationManager:
     """综合管理对话终止逻辑"""
     
-    def __init__(self, llm):
+    def __init__(self, llm: ChatOpenAI):
+        self.llm = llm
         self.hesitancy_detector = HesitancyDetector(llm)
         self.info_detector = InfoCompletenessDetector(llm)
-        self.natural_end_detector = NaturalEndDetector(llm)
     
-    def should_terminate_onboarding(self, conversation: List[Dict], min_turns: int, max_turns: int) -> Tuple[bool, TerminationSignal]:
-        num_turns = len(conversation) // 2
+    def should_terminate_onboarding(self, profile_completion_hint_text: str, full_conversation: List[Dict], min_conversational_turns: int = 8, max_turns: int = 30) -> Tuple[bool, TerminationSignal]:
+        # min_conversational_turns 用来确保至少聊了几句才结束，避免开场白就说全了
+        
+        # 对话轮数检查 (确保聊了一段时间)
+        num_turns = len(full_conversation) // 2
         if num_turns >= max_turns:
             return True, TerminationSignal(should_terminate=True, reason=TerminationReason.MAX_TURNS, confidence=1.0, explanation=f"达到最大轮数 {max_turns}")
-        if num_turns < min_turns:
-            return False, TerminationSignal(should_terminate=False, reason=None, confidence=1.0, explanation=f"未达到最小轮数 {min_turns}")
+        if num_turns < min_conversational_turns:
+            return False, TerminationSignal(should_terminate=False, reason=None, confidence=1.0, explanation=f"对话不足 {min_conversational_turns} 轮")
+            
+        # 优先判断用户是否不想聊了
+        if len(full_conversation) >= 2:
+            last_user_msg = None
+            for msg in reversed(full_conversation):
+                if msg.get("role") == "user":
+                    last_user_msg = msg.get("content", "")
+                    break
+            if last_user_msg:
+                hesitancy_signal = self.hesitancy_detector.detect(last_user_msg, full_conversation)
+                if hesitancy_signal.should_terminate and hesitancy_signal.confidence > 0.7:
+                    return True, hesitancy_signal
         
-        info_signal = self.info_detector.detect(conversation, min_turns)
+        # 检查信息完整度 (主要逻辑)
+        # 直接使用传入的 hint text 进行判断
+        info_signal = self.info_detector.detect(profile_completion_hint_text)
         if info_signal.should_terminate and info_signal.confidence > 0.8:
             return True, info_signal
             
         return False, TerminationSignal(should_terminate=False, reason=None, confidence=0.0, explanation="继续收集信息")
-    
-    def should_terminate_social_chat(self, conversation: List[Dict], min_messages: int, max_messages: int) -> Tuple[bool, TerminationSignal]:
-        if len(conversation) >= max_messages:
-            return True, TerminationSignal(should_terminate=True, reason=TerminationReason.MAX_TURNS, confidence=1.0, explanation=f"达到最大消息数 {max_messages}")
-        if len(conversation) < min_messages:
-            return False, TerminationSignal(should_terminate=False, reason=None, confidence=1.0, explanation=f"未达到最小消息数 {min_messages}")
-        
-        natural_signal = self.natural_end_detector.detect(conversation, min_messages)
-        if natural_signal.should_terminate and natural_signal.confidence > 0.7:
-            return True, natural_signal
-            
-        if len(conversation) >= 1:
-            last_msg = conversation[-1].get("content", "")
-            hesitancy_signal = self.hesitancy_detector.detect(last_msg, conversation)
-            if hesitancy_signal.should_terminate and hesitancy_signal.confidence > 0.8:
-                return True, hesitancy_signal
-        
-        return False, TerminationSignal(should_terminate=False, reason=None, confidence=0.0, explanation="继续聊天")
