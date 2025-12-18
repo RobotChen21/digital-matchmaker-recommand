@@ -3,15 +3,16 @@ from datetime import datetime, date
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from app.core.llm import get_llm
+
+from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import IntentOutput
 from app.services.ai.agents.profile_manager import ProfileService
 
 class IntentNode:
-    def __init__(self, db_manager):
-        self.db = db_manager
-        self.llm = get_llm(temperature=0)
+    def __init__(self):
+        self.db = container.db
+        self.llm = container.get_llm("intent") # temperature=0
         
         self.intent_parser = PydanticOutputParser(pydantic_object=IntentOutput)
         self.intent_chain = (
@@ -43,7 +44,7 @@ class IntentNode:
         )
         
         # [NEW] 通用对话 Chain (Chat/Consultation)
-        self.chitchat_llm = get_llm(temperature=0.7)
+        self.chitchat_llm = container.get_llm("chat") # temperature=0.7
         self.chitchat_chain = (
             ChatPromptTemplate.from_template(
                 """你是一位**资深婚恋顾问**，说话**专业、知性、温暖且有边界感**。

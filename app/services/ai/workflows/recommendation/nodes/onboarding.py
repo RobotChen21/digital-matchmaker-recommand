@@ -3,22 +3,20 @@ from datetime import datetime
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.core.llm import get_llm
+from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.core.utils.dict_utils import flatten_dict, deep_merge
 from app.services.ai.tools.termination import DialogueTerminationManager
-from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import ChromaManager
 from app.services.ai.agents.profile_manager import ProfileService # for summary
 
 # 延迟导入以避免循环依赖
 # from app.services.ai.workflows.user_init import UserInitializationService 
 
 class OnboardingNode:
-    def __init__(self, db_manager: MongoDBManager, chroma_manager: ChromaManager):
-        self.db = db_manager
-        self.chroma = chroma_manager
-        self.llm = get_llm(temperature=0.3) # Onboarding AI 温度稍高，更人性化
+    def __init__(self):
+        self.db = container.db
+        self.chroma = container.chroma
+        self.llm = container.get_llm("chat") # 0.7 for onboarding
         
         self.termination_manager = DialogueTerminationManager(self.llm)
         self.profile_service = ProfileService(self.llm) # 初始化 ProfileService
@@ -66,7 +64,7 @@ class OnboardingNode:
         if not self._user_init_service:
             from app.services.ai.workflows.user_init import UserInitializationService
             # 复用 llm 实例
-            self._user_init_service = UserInitializationService(self.db, self.chroma, self.llm, self.llm)
+            self._user_init_service = UserInitializationService()
         return self._user_init_service
 
     def process(self, state: MatchmakingState):
@@ -173,6 +171,8 @@ class OnboardingNode:
 
         history_for_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in history_list[-10:]]) # 限制 History 长度
         
+        print(f"   💡 [Debug] Hint used for prompt: {profile_completion_hint}")
+
         res = self.ask_chain.invoke({
             "profile_completion_hint": profile_completion_hint, # 传递 hint
             "history": history_for_prompt

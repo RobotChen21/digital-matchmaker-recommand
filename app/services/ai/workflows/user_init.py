@@ -2,15 +2,12 @@
 from datetime import datetime, date
 from bson import ObjectId
 from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI
 
-from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import ChromaManager
+from app.core.container import container
 from app.services.ai.agents.user_factory import VirtualUserGenerator
 from app.services.ai.agents.profile_manager import ProfileService
 from app.services.ai.tools.termination import DialogueTerminationManager
 from app.core.config import settings
-
 
 class UserInitializationService:
     """
@@ -18,51 +15,131 @@ class UserInitializationService:
     职责：原子化地执行 [生成用户 -> 红娘对话 -> 提取画像] 这一完整流程。
     """
 
-    def __init__(self, db_manager: MongoDBManager, chroma_manager: ChromaManager, llm_ai: ChatOpenAI, llm_user: ChatOpenAI):
-        self.db_manager = db_manager
-        self.chroma_manager = chroma_manager
+    def __init__(self):
+        self.db_manager = container.db
+        self.chroma_manager = container.chroma
         
         # 初始化各个子服务
-        self.termination_manager = DialogueTerminationManager(llm_ai)
-        self.user_gen = VirtualUserGenerator(llm_user)
-        self.profile_service = ProfileService(llm_ai) # 使用 AI 模型 (通常用能力强的那个) 进行分析
+        self.llm_ai = container.get_llm("chat")
+        self.llm_user = container.get_llm("chat")
+        
+        self.termination_manager = DialogueTerminationManager(self.llm_ai)
+        self.user_gen = VirtualUserGenerator(self.llm_user)
+        # 注意: TurnByTurnOnboardingGenerator 依然在 workflows/onboarding.py 中 (它是后台脚本用的)
+        self.profile_service = ProfileService(self.llm_ai) 
+
+    def create_and_onboard_single_user(self) -> ObjectId:
+        """
+        [后台脚本用] 执行单个用户的完整生命周期初始化。
+        """
+        print("\n" + "="*50)
+        print("🚀 [Atomic] 开始初始化新用户流程...")
+        
+        user_id = None
+
+        try:
+            # 1. 生成用户 (Generate)
+            print("  1️⃣ 生成虚拟用户基础信息...")
+            user_obj = self.user_gen.generate_user()
+            
+            # 存入 MongoDB (User Basic)
+            user_data_for_mongo = user_obj.model_dump(exclude_none=True)
+            # 确保 birthday 是 date 对象
+            if isinstance(user_data_for_mongo.get("birthday"), str):
+                try:
+                    user_data_for_mongo["birthday"] = date.fromisoformat(user_data_for_mongo["birthday"])
+                except ValueError:
+                    user_data_for_mongo["birthday"] = date(2000,1,1)
+            
+            persona_dict = user_data_for_mongo.pop("persona_seed") 
+            user_id = self.db_manager.insert_user_with_persona(user_data_for_mongo, persona_dict)
+            print(f"     ✅ 用户创建成功: {user_obj.nickname} (ID: {user_id})")
+
+            # 2. 红娘对话 (Onboarding)
+            print("  2️⃣ 开启 AI 红娘 Onboarding 对话...")
+            # 这里的 Onboarding Generator 会生成一整套对话并存入 DB
+            conversation_history = self.onboarding_gen.generate_for_user(
+                user_id,
+                self.db_manager,
+                min_turns=settings.generation.min_onboarding_turns,
+                max_turns=settings.generation.max_onboarding_turns
+            )
+            print(f"     ✅ 对话结束，共 {len(conversation_history)} 条消息")
+
+            # 3. 提取与向量化 (调用复用的 finalize 逻辑)
+            # 注意: 这里 finalize 会读取 DB 里的对话。generate_for_user 已经存了。
+            # 但 finalize 也会尝试读取 users_profile。
+            # 之前的逻辑是: 生成脚本是"一次性提取"。
+            # 现在的 finalize 逻辑假设 users_profile 已经增量提取了。
+            # 矛盾点: 生成脚本 (TurnByTurn) 并没有增量提取逻辑！它只存了对话。
+            # 所以，对于生成脚本，我们需要先"全量提取"，再"finalize"。
+            
+            print("  3️⃣ 提取全量画像 (Batch Mode)...")
+            dialogue_text = self.profile_service.format_dialogue_for_llm(conversation_history)
+            profile_data = self.profile_service.extract_from_dialogue(dialogue_text)
+            
+            profile_data["user_id"] = user_id
+            profile_data["updated_at"] = datetime.now()
+            self.db_manager.db["users_profile"].update_one(
+                {"user_id": user_id},
+                {"$set": profile_data},
+                upsert=True
+            )
+            
+            # 现在可以调用 finalize 了 (它会负责向量化和标记)
+            success = self.finalize_user_onboarding(str(user_id))
+            if not success:
+                raise Exception("Finalization failed.")
+
+            print(f"✨ 用户 [{user_obj.nickname}] 初始化流程全部完成!")
+            return user_id
+
+        except Exception as e:
+            print(f"❌ 初始化过程中断，正在回滚(删除)用户数据: {user_id}")
+            if user_id:
+                try:
+                    self.db_manager.users_basic.delete_one({"_id": user_id})
+                    self.db_manager.users_persona.delete_one({"user_id": user_id})
+                    self.db_manager.onboarding_dialogues.delete_one({"user_id": user_id})
+                    self.db_manager.db["users_profile"].delete_one({"user_id": user_id})
+                    self.db_manager.chat_records.delete_many({"user_id": user_id})
+                    self.db_manager.users_states.delete_one({"user_id": user_id})
+                    print("     ✅ 脏数据清理完成")
+                except Exception as cleanup_error:
+                    print(f"     ⚠️ 清理脏数据失败: {cleanup_error}")
+            
+            raise e 
 
     def finalize_user_onboarding(self, user_id: str) -> bool:
         """
         [原子操作块]
         当用户完成 Onboarding 对话后调用。
         负责：
-        1. 读取全量对话
-        2. 提取画像 -> 存库
+        1. (可选) 读取全量对话
+        2. (可选) 提取画像 -> 存库 
+           (注意: 现在的逻辑假设画像已经存在库里了。对于生成脚本，前面已经提了。对于实时对话，OnboardingNode已经增量提了)
         3. 向量化画像 -> 存库
         4. 向量化对话 -> 存库
         5. 标记用户为 is_completed=True
         """
-        print(f"🚀 [Finalize] 开始处理用户 {user_id} 的最终画像与向量化...")
+        print(f"🚀 [Finalize] 开始处理用户 {user_id} 的最终向量化与标记...")
         uid = ObjectId(user_id)
         
         try:
-            # 0. [幂等性保障] 先清理该用户已有的向量数据，防止重试导致重复积压
-            # 注意：这会删除该用户的所有画像摘要和对话记录向量
-            print(f"   🧹 清理用户 {uid} 的旧向量数据...")
+            # 0. 清理旧向量 (幂等性)
             try:
                 self.chroma_manager.vector_db.delete(where={"user_id": str(uid)})
-            except Exception as e:
-                # 如果是第一次生成，可能没有数据，delete 可能会(视版本而定)报错或不做任何事
-                # 这里的 catch 是为了稳健，防止因为"没东西删"而报错
-                print(f"   ⚠️ 清理向量数据时(可能无数据): {e}")
+            except:
+                pass
 
-            # 1. 读取对话
+            # 1. 读取对话 (用于向量化)
             dialogue_record = self.db_manager.onboarding_dialogues.find_one({"user_id": uid})
-            if not dialogue_record or not dialogue_record.get('messages'):
+            if not dialogue_record:
                 print("   ❌ 未找到对话记录")
                 return False
+            messages = dialogue_record.get('messages', [])
             
-            messages = dialogue_record['messages']
-            
-            # 2. [优化] 直接从数据库读取最新的画像 (已经在 OnboardingNode 中增量提取并保存了)
-            # 不再重复进行全量提取，节省 Token 并避免数据覆盖风险
-            print("   📸 读取已有的全量画像...")
+            # 2. 读取画像 (用于向量化)
             profile_data = self.db_manager.db["users_profile"].find_one({"user_id": uid}) or {}
             
             # 3. 向量化画像
@@ -77,7 +154,6 @@ class UserInitializationService:
                 "city": user_basic.get('city', 'unknown'), 
                 "timestamp": str(datetime.now())
             }
-            # 补充元数据
             if user_basic.get('height'): metadata['height'] = user_basic.get('height')
             if isinstance(user_basic.get('birthday'), date): metadata['birth_year'] = user_basic.get('birthday').year
             elif isinstance(user_basic.get('birthday'), str): 
@@ -89,24 +165,27 @@ class UserInitializationService:
             
             # 4. 向量化对话
             print("   💬 向量化对话记录...")
-            self.chroma_manager.add_conversation_chunks(
-                str(user_id),
-                messages,
-                "onboarding",
-                window_size=settings.rag.window_size,
-                overlap=settings.rag.overlap
-            )
+            if messages:
+                self.chroma_manager.add_conversation_chunks(
+                    str(user_id),
+                    messages,
+                    "onboarding",
+                    window_size=settings.rag.window_size,
+                    overlap=settings.rag.overlap
+                )
             
-            # 5. 标记完成
-            self.db_manager.users_basic.update_one(
-                {"_id": uid},
-                {"$set": {"is_completed": True}}
-            )
-            self.db_manager.users_states.update_one( # [NEW] 更新状态表
+            # 5. 标记完成 (User States)
+            self.db_manager.users_states.update_one(
                 {"user_id": uid},
                 {"$set": {"is_onboarding_completed": True, "updated_at": datetime.now()}},
                 upsert=True
             )
+            # 同时也更新 Basic (兼容性)
+            self.db_manager.users_basic.update_one(
+                {"_id": uid},
+                {"$set": {"is_completed": True}}
+            )
+            
             print("   ✅ 用户初始化最终完成！")
             return True
             
@@ -114,6 +193,4 @@ class UserInitializationService:
             print(f"   ❌ Finalize 失败: {e}")
             import traceback
             traceback.print_exc()
-            # 失败策略: 回滚状态? 或者让用户重试?
-            # 暂时保持 is_completed=False，用户下次还可以继续或者重试
             return False

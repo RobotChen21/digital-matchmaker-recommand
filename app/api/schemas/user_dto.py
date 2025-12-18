@@ -19,6 +19,7 @@ class UserProfileUpdate(BaseModel):
     birthday: date = Field(description="出生日期 YYYY-MM-DD") # 强制为 date 类型
     city: str = Field(description="所在城市")
     height: int = Field(description="身高 (cm)")
+    weight: int = Field(description="体重 (kg)")
     self_intro: Optional[str] = Field("", description="自我介绍")
 
 # 3. 资料获取
@@ -30,4 +31,5 @@ class UserProfileResponse(BaseModel): # 直接继承 BaseModel，而非 UserProf
     city: str
     height: int
     self_intro: str
+    weight: int
     is_profile_completed: bool = Field(False, description="资料是否已完善")

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 from app.common.models.state import MatchmakingState
+from app.core.container import container
 
 class RecallNode:
-    def __init__(self, chroma_manager):
-        self.chroma = chroma_manager
+    def __init__(self):
+        self.chroma = container.chroma
 
     def semantic_recall(self, state: MatchmakingState):
         """Step 3: 语义召回 (只搜画像摘要)"""

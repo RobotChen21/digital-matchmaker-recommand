@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
+from typing import List, Dict, Optional, Any
 from fastapi import APIRouter, HTTPException, Depends
+from bson import ObjectId
 
-from app.services.ai.workflows.recommendation import RecommendationWorkflow
 from app.api.schemas.chat_dto import ChatRequest, ChatResponse, CandidateDTO, ChatContext
 from app.api.v1.endpoints.auth import get_current_user_id
-from app.db.mongo_manager import MongoDBManager # 新增导入
-from app.db.chroma_manager import ChromaManager # 新增导入
-from app.core.config import settings # 新增导入
-
-from bson import ObjectId
+from app.core.container import container # 引入容器
 
 router = APIRouter()
 
@@ -23,25 +20,13 @@ def serialize_mongo_obj(obj):
         return [serialize_mongo_obj(i) for i in obj]
     return obj
 
-# --- 全局初始化依赖 (确保只在应用启动时执行一次) ---
-db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
-chroma_manager = ChromaManager(
-    settings.database.chroma_persist_dir,
-    settings.database.chroma_collection_name
-)
-
-# 初始化 Workflow (单例模式)
-rec_workflow = RecommendationWorkflow(db_manager, chroma_manager) # 传入依赖
-rec_app = rec_workflow.build_graph()
-
-#TODO 需要升级成websocket实现
 @router.post("/message", response_model=ChatResponse)
 async def chat_with_matchmaker(
     request: ChatRequest,
-    user_id: str = Depends(get_current_user_id) # 从 Token 获取 ID
+    user_id: str = Depends(get_current_user_id) 
 ):
     """
-    与 AI 红娘对话接口 (需要 Bearer Token)
+    与 AI 红娘对话接口
     """
     ctx = request.context
     
@@ -59,7 +44,9 @@ async def chat_with_matchmaker(
     }
 
     try:
-        final_state = rec_app.invoke(initial_state)
+        # 从容器获取 app
+        app = container.recommendation_app
+        final_state = app.invoke(initial_state)
         
         candidates_data = final_state.get("final_candidates", [])
         intent = final_state.get("intent", "unknown")
@@ -77,8 +64,7 @@ async def chat_with_matchmaker(
             )
             final_candidates_dtos.append(dto)
             
-        # 构造新的 Context 返回给前端
-        # 必须先清洗 ObjectId
+        # 构造新的 Context
         cleaned_last_criteria = serialize_mongo_obj(final_state.get("last_search_criteria", {}))
         
         new_ctx = ChatContext(

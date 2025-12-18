@@ -1,3 +1,0 @@
-net start MongoDB
-chcp 65001
-pip freeze > requirements.txt

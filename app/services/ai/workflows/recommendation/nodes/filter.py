@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
 from bson import ObjectId
 from datetime import datetime, date
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
-from app.core.config import settings
-from app.core.llm import get_llm
+from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import FilterOutput, RefineOutput
 
 class FilterNode:
-    def __init__(self, db_manager):
-        self.db = db_manager
-        self.llm = get_llm(temperature=0)
+    def __init__(self):
+        self.db = container.db
+        self.llm = container.get_llm("intent") # Filter 需要严谨，复用 intent 配置
         
         self.filter_parser = PydanticOutputParser(pydantic_object=FilterOutput)
         self.filter_chain = (

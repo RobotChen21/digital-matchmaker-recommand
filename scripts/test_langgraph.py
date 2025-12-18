@@ -9,26 +9,17 @@ from pymongo.errors import OperationFailure
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
-
-from app.core.config import settings
-from app.db.mongo_manager import MongoDBManager
-from app.db.chroma_manager import ChromaManager
-from app.services.ai.workflows.recommendation import RecommendationWorkflow
+from app.core.container import container
 
 def main():
     print("🚀 启动交互式红娘推荐系统 (CLI Mode)...")
     print("输入 'q' 或 'quit' 退出")
     
     # 1. Init Dependencies
-    db_manager = MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
-    chroma_manager = ChromaManager(
-        settings.database.chroma_persist_dir,
-        settings.database.chroma_collection_name
-    )
+    db_manager = container.db
     
     # 2. Init Workflow
-    workflow = RecommendationWorkflow(db_manager, chroma_manager)
-    app = workflow.build_graph()
+    app = container.recommendation_app
     
     # 3. Pick user (指定ID优先)
     target_user_id = "693ebdc20196b88668259955"

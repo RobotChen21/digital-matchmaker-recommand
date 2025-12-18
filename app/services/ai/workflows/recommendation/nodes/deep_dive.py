@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 from langchain_core.prompts import ChatPromptTemplate
 from bson import ObjectId
-from app.core.llm import get_llm
+from datetime import datetime, date
+
+from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.core.utils.cal_utils import calc_age
 
 
 class DeepDiveNode:
-    def __init__(self, db_manager, chroma_manager):
-        self.db = db_manager
-        self.chroma = chroma_manager
-        self.llm = get_llm(temperature=0.7)
+    def __init__(self):
+        self.db = container.db
+        self.chroma = container.chroma
+        self.llm = container.get_llm("chat") # temperature=0.7
         
         self.deep_answer_chain = (
             ChatPromptTemplate.from_template(

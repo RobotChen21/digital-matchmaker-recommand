@@ -2,12 +2,13 @@
 from bson import ObjectId
 from datetime import datetime, date
 from app.common.models.state import MatchmakingState
+from app.core.container import container
 from app.core.utils.cal_utils import calc_age
 
 
 class RankingNode:
-    def __init__(self, db_manager):
-        self.db = db_manager
+    def __init__(self):
+        self.db = container.db
 
     def ranking(self, state: MatchmakingState):
         """Step 4: 精排 (Layer 2: Rule Scoring)"""

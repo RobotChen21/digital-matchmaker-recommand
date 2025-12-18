@@ -96,7 +96,7 @@ class ProfileService:
         age = _get_age(basic.get('birthday'))
         gender_mapping = {"male": "男", "female": "女士"}
         parts.append(f"我是{basic.get('nickname')}，{gender_mapping.get(basic.get('gender'), None)}性，"
-                     f"今年{age}岁，住在{basic.get('city')}，身高{basic.get('height')}，"
+                     f"今年{age}岁，生活在{basic.get('city')}，身高{basic.get('height')}，"
                      f"体重是{basic.get('weight')}，"
                      f"{basic.get('self_intro_raw')}")
         
@@ -138,6 +138,7 @@ class ProfileService:
         """
         使用 LLM 生成当前画像的完整度提示。
         """
+        import json
         from langchain_core.prompts import ChatPromptTemplate
         from app.common.models.profile import REQUIRED_PROFILE_DIMENSIONS # 导入规则
         
@@ -151,19 +152,22 @@ class ProfileService:
             {required_dimensions}
             
             【分析目标】:
-            1. **简述已收集到的核心信息** (用一句话概括，如: "已知用户是硕士，程序员，独生子")。
+            1. **列出已收集到的核心具体信息** (务必包含具体值，如: "学历:硕士(中山大学), 职业:程序员(后端), 家庭:独生子")。
             2. **检查必填项缺失**。对比清单，明确指出还有哪些核心字段缺失。
+               - **判断标准**：只要某个维度下的关键字段（如 tags, big5, job_title）有值，就算该维度已收集，不要因为缺细枝末节而说整个维度缺失。
                - **特殊规则**：如果识别出用户是**学生/在读**，则【工作风格】和【收入水平】不算作缺失项，请勿要求红娘追问。
             3. 如果必填项都全了，请说 "核心画像已完善"。
             
-            请直接输出提示内容，不要废话，控制在 50 字以内。"""
+            请直接输出提示内容，不要废话，控制在 200 字以内。"""
         )
         
         chain = prompt | self.completion_llm
         try:
-            # 将 profile 转为字符串
+            # 将 profile 转为格式化的 JSON 字符串
+            profile_str = json.dumps(profile, ensure_ascii=False, indent=2, default=str)
+            
             res = chain.invoke({
-                "profile_json": str(profile),
+                "profile_json": profile_str,
                 "required_dimensions": "\n".join(REQUIRED_PROFILE_DIMENSIONS)
             })
             return res.content

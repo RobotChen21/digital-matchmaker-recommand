@@ -2,19 +2,15 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from app.api.schemas.auth_dto import LoginRequest, Token
-from app.db.mongo_manager import MongoDBManager
-from app.core.config import settings
+from app.core.container import container # 引入容器
 from app.core.security import verify_password, create_access_token, decode_access_token
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-def get_db():
-    return MongoDBManager(settings.database.mongo_uri, settings.database.db_name)
-#TODO 实现拦截器逻辑
 @router.post("/login", response_model=Token)
 async def login(request: LoginRequest):
-    db = get_db()
+    db = container.db # 从容器获取
     
     # 1. 查用户
     user = db.get_auth_user_by_account(request.username)

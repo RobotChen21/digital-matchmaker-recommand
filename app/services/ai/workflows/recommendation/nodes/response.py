@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from app.core.llm import get_llm # 从 get_llm 导入
+from datetime import date
+
+from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import EvidenceOutput
 
 class ResponseNode:
-    def __init__(self, chroma_manager):
-        self.chroma = chroma_manager
-        self.llm = get_llm(temperature=0.4)
+    def __init__(self):
+        self.chroma = container.chroma
+        self.llm = container.get_llm("reason") # temperature=0.4
         
         self.evidence_parser = PydanticOutputParser(pydantic_object=EvidenceOutput)
         self.evidence_chain = (
