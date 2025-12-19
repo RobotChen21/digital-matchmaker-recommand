@@ -2,7 +2,7 @@
 from datetime import datetime
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
-
+from app.core.utils.dict_utils import smart_merge
 from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.core.utils.dict_utils import flatten_dict, deep_merge
@@ -40,11 +40,12 @@ class OnboardingNode:
    - **家庭背景**: 独生子女？兄弟姐妹？, 父母健康/职业/退休？, 家庭经济状况？, 家庭氛围/父母婚姻状况(离异/重组)?
 请直接输出回复。
 2. 请使用**自然口语**，就像微信聊天一样。**严禁**使用 Markdown 格式，**严禁**长篇大论，每次回复控制在 3 句话以内。
+【对话历史 (最近)】:
+{history}
 【已收集信息暗示】:
 {profile_completion_hint}
-(注意：此信息可能存在延迟。如果用户刚刚在【对话历史】中回答了某项信息，请以历史为准，不要重复追问。)
-【对话历史 (最近)】:
-{history}"""
+(注意：此信息可能存在延迟。如果用户刚刚在【对话历史】中回答了某项信息，请以对话历史为准，请以对话历史为准，请以对话历史为准，不要重复追问。)
+"""
             ) | self.llm
         )
         
@@ -67,14 +68,18 @@ class OnboardingNode:
             self._user_init_service = UserInitializationService()
         return self._user_init_service
 
-    def process(self, state: MatchmakingState):
+    async def process(self, state: MatchmakingState):
         """处理 Onboarding 逻辑"""
         print("📝 [Onboarding] 实时对话处理...")
         
         user_id = state['user_id']
         current_input = state['current_input']
         uid = ObjectId(user_id)
+        
+        # ⚠️ 注意: PyMongo 是同步的，在 async 函数中会阻塞 loop。
+        # 在生产环境中应使用 Motor 或 run_in_executor。这里暂时保持同步调用。
         user_basic = self.db.users_basic.find_one({"_id": ObjectId(user_id)})
+        
         # 1. 实时保存用户输入
         user_msg = {"role": "user", "content": current_input, "timestamp": datetime.now()}
         self.db.onboarding_dialogues.update_one(
@@ -90,6 +95,7 @@ class OnboardingNode:
         full_profile = self.db.profile.find_one({"user_id": uid}) or {} # 先读当前的
         
         # [Strategy] 预先生成 Hint，确保如果不进 batch 更新逻辑，后续步骤也有值可用
+        # ProfileService 内部可能有 LLM 调用，建议也改为 async，但为了最小改动，这里先同步执行
         profile_completion_hint = self.profile_service.generate_profile_completion_hint(profile=full_profile)
 
         # 逻辑改为：每当用户说了 3 句话 (即积累了约 3 轮对话)，触发一次提取
@@ -98,33 +104,48 @@ class OnboardingNode:
         if user_msg_count > 0 and user_msg_count % 4 == 0:
             print(f"   🔄 触发增量画像提取 (用户已发言 {user_msg_count} 次)...")
             # 取最近的 6 条消息作为上下文 (User + AI)
-            # 注意：history_list 只有奇数条，所以取最后 5 条可能更匹配 (U, A, U, A, U)
-            # 或者取 6 条也没关系，切片会自动处理越界
             recent_batch = history_list[-10:]
             # 格式化对话
             dialogue_text = self.profile_service.format_dialogue_for_llm(recent_batch)
-            # 提取
+            # 提取 (CPU bound + Network bound)
             extracted_data = self.profile_service.extract_from_dialogue(dialogue_text)
             
-            # 更新 DB (Merge)
+            # 更新 DB (Smart Merge)
             if extracted_data:
                 # 过滤空值
                 update_payload = {k: v for k, v in extracted_data.items() if v}
                 
                 if update_payload:
-                    # [FIX] Flatten specifically for nested updates to avoid overwriting siblings
-                    flat_update = flatten_dict(update_payload)
-                    flat_update["updated_at"] = datetime.now()
+                    print(f"   -> 提取到新信息 (Before Merge): {list(update_payload.keys())}")
+                    
+                    # [FIX] 使用智能合并：列表追加，标量覆盖
+                    # 直接修改内存中的 full_profile
+                    smart_merge(full_profile, update_payload)
+                    
+                    # 准备写入 DB 的数据
+                    # 我们不仅要写入 update_payload 的 key，还要写入它们合并后的最终值 (因为 full_profile 已经被 modify 了)
+                    # 为了安全，重新 flatten 一次 full_profile 中涉及到 update_payload 的部分，或者直接 save 整个 documents
+                    # 考虑到并发风险低，直接 set 修改过的字段的最终值
+                    
+                    final_update_set = {}
+                    flat_updates = flatten_dict(update_payload) # 仅为了获取所有涉及的 key
+                    
+                    # 重新从 full_profile 提取最终值，构造 $set
+                    # 这里有一个技巧：因为 smart_merge 已经更新了 nested dict，
+                    # 我们可以简单地把 update_payload 顶层 key 对应的 full_profile 值写回去
+                    # 或者更细粒度一点。为了处理 list append，最简单的是把涉及到的 顶层 key 整个覆盖回去。
+                    
+                    for top_key in update_payload.keys():
+                        final_update_set[top_key] = full_profile[top_key]
+                        
+                    final_update_set["updated_at"] = datetime.now()
                     
                     self.db.profile.update_one(
                         {"user_id": uid},
-                        {"$set": flat_update},
+                        {"$set": final_update_set},
                         upsert=True
                     )
-                    print(f"   -> 增量更新了字段: {list(flat_update.keys())}")
-                    
-                    # 更新内存中的 profile 用于后续判断 (Deep Merge to avoid data loss)
-                    deep_merge(full_profile, update_payload)
+                    print(f"   -> 增量合并并更新了字段: {list(final_update_set.keys())}")
                     
                     # [FIX] 画像更新了，重新生成 Hint 以便 Termination Check 使用最新数据
                     profile_completion_hint = self.profile_service.generate_profile_completion_hint(profile=full_profile)
@@ -151,9 +172,10 @@ class OnboardingNode:
                     # 读取最新画像用于结束语
 
                     full_profile = self.db.profile.find_one({"user_id": uid}) or {} # 重新读一次确保最新
-                    current_profile_summary_text = ProfileService.generate_profile_summary(user_basic, full_profile)
+                    current_profile_summary_text = self.profile_service.generate_profile_summary(user_basic, full_profile)
 
-                    res = self.finish_chain.invoke({"current_profile_summary": current_profile_summary_text})
+                    # [ASYNC CHANGE] 使用 ainvoke
+                    res = await self.finish_chain.ainvoke({"current_profile_summary": current_profile_summary_text})
                     reply = res.content
 
                     ai_msg = {"role": "ai", "content": reply, "timestamp": datetime.now()}
@@ -173,7 +195,8 @@ class OnboardingNode:
         
         print(f"   💡 [Debug] Hint used for prompt: {profile_completion_hint}")
 
-        res = self.ask_chain.invoke({
+        # [ASYNC CHANGE] 使用 ainvoke
+        res = await self.ask_chain.ainvoke({
             "profile_completion_hint": profile_completion_hint, # 传递 hint
             "history": history_for_prompt
         })

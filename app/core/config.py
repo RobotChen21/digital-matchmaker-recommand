@@ -63,6 +63,13 @@ class Settings(BaseModel):
 
         with open(found_path, "r", encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
+
+        # 修正: 将相对路径转换为基于项目根目录的绝对路径
+        if 'database' in config_data and 'chroma_persist_dir' in config_data['database']:
+             p = Path(config_data['database']['chroma_persist_dir'])
+             if not p.is_absolute():
+                 config_data['database']['chroma_persist_dir'] = str(project_root / p)
+
         return cls(**config_data)
 
 # 单例加载

@@ -4,7 +4,6 @@ from bson import ObjectId
 from langchain_core.documents import Document
 
 from app.core.container import container
-from app.services.ai.agents.user_factory import VirtualUserGenerator
 from app.services.ai.agents.profile_manager import ProfileService
 from app.services.ai.tools.termination import DialogueTerminationManager
 from app.core.config import settings
@@ -24,7 +23,6 @@ class UserInitializationService:
         self.llm_user = container.get_llm("chat")
         
         self.termination_manager = DialogueTerminationManager(self.llm_ai)
-        self.user_gen = VirtualUserGenerator(self.llm_user)
         # 注意: TurnByTurnOnboardingGenerator 依然在 workflows/onboarding.py 中 (它是后台脚本用的)
         self.profile_service = ProfileService(self.llm_ai) 
 
@@ -145,18 +143,19 @@ class UserInitializationService:
             # 3. 向量化画像
             print("   🧠 向量化画像...")
             user_basic = self.db_manager.users_basic.find_one({"_id": uid})
-            summary_text = ProfileService.generate_profile_summary(user_basic, profile_data)
+            summary_text = self.profile_service.generate_profile_summary(user_basic, profile_data)
             
             metadata = {
                 "user_id": str(user_id),
                 "gender": user_basic.get('gender', 'unknown'), 
                 "data_type": "profile_summary", 
-                "city": user_basic.get('city', 'unknown'), 
+                "city": user_basic.get('city', 'unknown'),
+                "height": user_basic.get('height', 'unknown'),
+                "weight": user_basic.get('weight', 'unknown'),
                 "timestamp": str(datetime.now())
             }
-            if user_basic.get('height'): metadata['height'] = user_basic.get('height')
             if isinstance(user_basic.get('birthday'), date): metadata['birth_year'] = user_basic.get('birthday').year
-            elif isinstance(user_basic.get('birthday'), str): 
+            elif isinstance(user_basic.get('birthday'), str):
                 try: metadata['birth_year'] = int(user_basic.get('birthday').split('-')[0])
                 except: pass
 

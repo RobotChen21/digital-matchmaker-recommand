@@ -26,3 +26,35 @@ def deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]
         else:
             target[key] = value
     return target
+
+def smart_merge(target: dict, source: dict):
+    """
+    Smart merge for profile updates.
+    - Dicts: Recursive merge.
+    - Lists: Append and deduplicate (Union).
+    - Scalars: Overwrite with new value.
+    """
+    for key, value in source.items():
+        if key in target:
+            if isinstance(target[key], dict) and isinstance(value, dict):
+                smart_merge(target[key], value)
+            elif isinstance(target[key], list) and isinstance(value, list):
+                # List Merge: Append & Deduplicate
+                try:
+                    # Attempt set-based deduplication for hashable items
+                    current_set = set(target[key])
+                    for item in value:
+                        if item not in current_set:
+                            target[key].append(item)
+                            current_set.add(item)
+                except TypeError:
+                    # Fallback for unhashable items (e.g. dicts in list)
+                    for item in value:
+                        if item not in target[key]:
+                            target[key].append(item)
+            else:
+                # Scalar overwrite (assume new info is correction)
+                target[key] = value
+        else:
+            # New key
+            target[key] = value
