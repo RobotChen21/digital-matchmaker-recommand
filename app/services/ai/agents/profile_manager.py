@@ -8,8 +8,6 @@ from app.services.ai.agents.extractors import (
     EducationExtractor, OccupationExtractor, FamilyExtractor,
     DatingPrefExtractor, RiskExtractor
 )
-from app.common.models.profile import UserProfile
-from app.core.llm import get_llm
 
 class ProfileService:
     """
@@ -17,7 +15,7 @@ class ProfileService:
     从对话文本中提取完整的用户画像。
     """
     def __init__(self, llm: ChatOpenAI):
-        self.llm = llm
+        self.completion_llm = llm
         # 初始化所有子 Agent
         self.agents = {
             "personality_profile": PersonalityExtractor(llm),
@@ -31,9 +29,6 @@ class ProfileService:
             "family_profile": FamilyExtractor(llm),
             "dating_preferences": DatingPrefExtractor(llm),
         }
-        
-        # [NEW] 进度提示 LLM
-        self.completion_llm = get_llm(temperature=0.0) # 确保稳定
 
     def extract_from_dialogue(self, dialogue_text: str) -> Dict[str, Any]:
         """

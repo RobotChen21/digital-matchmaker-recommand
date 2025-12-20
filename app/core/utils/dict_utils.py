@@ -38,8 +38,19 @@ def smart_merge(target: dict, source: dict):
         if key in target:
             if isinstance(target[key], dict) and isinstance(value, dict):
                 smart_merge(target[key], value)
-            elif isinstance(target[key], list) and isinstance(value, list):
-                # List Merge: Append & Deduplicate
+            elif isinstance(value, list):
+                # Robust List Merge:
+                # If source is list, we MUST treat target as list.
+                
+                # 1. Ensure target[key] is a list
+                if not isinstance(target[key], list):
+                    # If it's a scalar (e.g. legacy dirty data), wrap it
+                    if target[key] is not None:
+                        target[key] = [target[key]]
+                    else:
+                        target[key] = []
+                
+                # 2. Append & Deduplicate
                 try:
                     # Attempt set-based deduplication for hashable items
                     current_set = set(target[key])
@@ -48,7 +59,7 @@ def smart_merge(target: dict, source: dict):
                             target[key].append(item)
                             current_set.add(item)
                 except TypeError:
-                    # Fallback for unhashable items (e.g. dicts in list)
+                    # Fallback for unhashable items
                     for item in value:
                         if item not in target[key]:
                             target[key].append(item)

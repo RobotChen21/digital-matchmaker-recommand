@@ -4,8 +4,9 @@ from bson import ObjectId
 from langchain_core.documents import Document
 
 from app.core.container import container
+# from app.services.ai.agents.user_factory import VirtualUserGenerator # Module missing
 from app.services.ai.agents.profile_manager import ProfileService
-from app.services.ai.tools.termination import DialogueTerminationManager
+# from app.services.ai.tools.termination import DialogueTerminationManager # Removed
 from app.core.config import settings
 
 class UserInitializationService:
@@ -22,9 +23,8 @@ class UserInitializationService:
         self.llm_ai = container.get_llm("chat")
         self.llm_user = container.get_llm("chat")
         
-        self.termination_manager = DialogueTerminationManager(self.llm_ai)
-        # 注意: TurnByTurnOnboardingGenerator 依然在 workflows/onboarding.py 中 (它是后台脚本用的)
-        self.profile_service = ProfileService(self.llm_ai) 
+        self.termination_manager = container.termination_manager
+        self.profile_service = container.profile_service
 
     def create_and_onboard_single_user(self) -> ObjectId:
         """

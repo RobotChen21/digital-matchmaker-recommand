@@ -2,12 +2,9 @@
 from datetime import datetime
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
-from app.core.utils.dict_utils import smart_merge
+from app.core.utils.dict_utils import smart_merge, flatten_dict
 from app.core.container import container
 from app.common.models.state import MatchmakingState
-from app.core.utils.dict_utils import flatten_dict, deep_merge
-from app.services.ai.tools.termination import DialogueTerminationManager
-from app.services.ai.agents.profile_manager import ProfileService # for summary
 
 # 延迟导入以避免循环依赖
 # from app.services.ai.workflows.user_init import UserInitializationService 
@@ -18,8 +15,8 @@ class OnboardingNode:
         self.chroma = container.chroma
         self.llm = container.get_llm("chat") # 0.7 for onboarding
         
-        self.termination_manager = DialogueTerminationManager(self.llm)
-        self.profile_service = ProfileService(self.llm) # 初始化 ProfileService
+        self.termination_manager = container.termination_manager # 使用单例
+        self.profile_service = container.profile_service # 使用单例
         
         # 懒加载 UserInitializationService
         self._user_init_service = None

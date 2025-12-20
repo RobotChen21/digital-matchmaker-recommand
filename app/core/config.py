@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 import yaml
-from typing import Dict, Any
 from pydantic import BaseModel
 from pathlib import Path
 

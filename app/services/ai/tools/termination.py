@@ -6,7 +6,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.common.models.termination import TerminationReason, TerminationSignal
-from app.services.ai.agents.profile_manager import ProfileService # 导入 ProfileService
 from app.common.models.profile import REQUIRED_PROFILE_DIMENSIONS # 导入公共常量
 
 class HesitancyDetector:

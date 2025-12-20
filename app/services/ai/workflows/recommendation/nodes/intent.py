@@ -7,7 +7,6 @@ from langchain_core.output_parsers import PydanticOutputParser
 from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import IntentOutput
-from app.services.ai.agents.profile_manager import ProfileService
 
 class IntentNode:
     def __init__(self):
@@ -45,6 +44,7 @@ class IntentNode:
         
         # [NEW] 通用对话 Chain (Chat/Consultation)
         self.chitchat_llm = container.get_llm("chat") # temperature=0.7
+        self.profile_service = container.profile_service # 使用单例
         self.chitchat_chain = (
             ChatPromptTemplate.from_template(
                 """你是一位**资深婚恋顾问**，说话**专业、知性、温暖且有边界感**。
@@ -75,7 +75,7 @@ class IntentNode:
             user_profile = self.db.profile.find_one({"_id": uid}) or {}
             
             # 3. 生成 Summary
-            summary = ProfileService.generate_profile_summary(user_basic, user_profile)
+            summary = self.profile_service.generate_profile_summary(user_basic, user_profile)
             
             # 4. 更新 State
             state['current_user_gender'] = user_basic.get('gender')
@@ -142,18 +142,3 @@ class IntentNode:
             print(f"   ❌ 闲聊生成失败: {e}")
             state['reply'] = "我是您的专属红娘，主要负责帮您找对象哦~ (刚才脑子短路了一下)"
         return state
-
-    def _calc_age(self, birthday_val):
-        if not birthday_val: return 0
-        try:
-            if isinstance(birthday_val, datetime):
-                b_date = birthday_val.date()
-            elif isinstance(birthday_val, date):
-                b_date = birthday_val
-            else:
-                return 0
-                
-            today = date.today()
-            return today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
-        except:
-            return 0

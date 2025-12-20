@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from functools import lru_cache
 from typing import Optional
 
 from langchain_openai import ChatOpenAI
@@ -22,6 +21,8 @@ class AppContainer:
         self._mongo_manager: Optional[MongoDBManager] = None
         self._chroma_manager: Optional[ChromaManager] = None
         self._workflow = None # Workflow 单例
+        self._profile_service = None # ProfileService 单例
+        self._termination_manager = None # TerminationManager 单例
         
         # LLM 缓存
         self._llms = {}
@@ -31,6 +32,25 @@ class AppContainer:
         if not cls._instance:
             cls._instance = cls()
         return cls._instance
+
+    # --- Services (Singleton) ---
+    @property
+    def profile_service(self):
+        """获取 ProfileService 单例"""
+        if not self._profile_service:
+            from app.services.ai.agents.profile_manager import ProfileService
+            # 使用 chat 模型，温度适中，适合提取和生成
+            self._profile_service = ProfileService(self.get_llm("reason"))
+        return self._profile_service
+
+    @property
+    def termination_manager(self):
+        """获取 DialogueTerminationManager 单例"""
+        if not self._termination_manager:
+            from app.services.ai.tools.termination import DialogueTerminationManager
+            # 使用 intent 模型 (温度0) 进行逻辑判断
+            self._termination_manager = DialogueTerminationManager(self.get_llm("intent"))
+        return self._termination_manager
 
     # --- Workflow (Singleton) ---
     @property

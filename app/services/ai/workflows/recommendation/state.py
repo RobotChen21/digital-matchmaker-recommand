@@ -25,12 +25,14 @@ class IntentOutput(BaseModel):
     match_policy: MatchPolicy = Field(default_factory=MatchPolicy, description="匹配策略")
 
 class FilterOutput(BaseModel):
-    mongo_query: Dict[str, Any] = Field(description="MongoDB 查询语句")
-    age_min: Optional[int] = Field(None, description="用户期望的最小年龄")
-    age_max: Optional[int] = Field(None, description="用户期望的最大年龄")
-    bmi_min: Optional[float] = Field(None, description="用户期望的最小BMI")
-    bmi_max: Optional[float] = Field(None, description="用户期望的最大BMI")
-    explanation: str = Field(description="解释")
+    city: List[str] = Field(default_factory=list, description="期望城市列表 (如: ['上海', '杭州'])")
+    height_min: Optional[int] = Field(None, description="最小身高(cm)")
+    height_max: Optional[int] = Field(None, description="最大身高(cm)")
+    age_min: Optional[int] = Field(None, description="期望最小年龄")
+    age_max: Optional[int] = Field(None, description="期望最大年龄")
+    bmi_min: Optional[float] = Field(None, description="期望最小BMI")
+    bmi_max: Optional[float] = Field(None, description="期望最大BMI")
+    explanation: str = Field(description="筛选条件解释")
 
 class RefineOutput(BaseModel):
     relaxed_query: str = Field(description="放宽后的查询描述")

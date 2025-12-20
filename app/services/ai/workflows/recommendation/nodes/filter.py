@@ -16,30 +16,24 @@ class FilterNode:
         self.filter_parser = PydanticOutputParser(pydantic_object=FilterOutput)
         self.filter_chain = (
             ChatPromptTemplate.from_template(
-                """你是 MongoDB 查询专家。根据用户描述和当前用户画像，生成 MongoDB 查询语句。
+                """你是信息提取专家。请从用户描述中提取硬性筛选条件。
                 
-                当前用户: {user_profile_summary}
                 用户需求: {user_input}
                 
-                【硬性规则 - 重要!】:
-                1. **绝对不要**包含 `gender` 或 `sex` 字段。
-                2. **只允许**筛选以下字段: `city`, `height`.
-                3. 年龄请提取 `age_min` 和 `age_max`。
-                4. 身材请提取 `bmi_min` 和 `bmi_max`，参考以下映射表：
+                【提取规则】:
+                1. **City**: 提取提到的所有城市，输出为字符串列表。如 "上海或杭州" -> ["上海", "杭州"]。
+                2. **Height**: 提取身高范围(cm)。如 "1米8以上" -> height_min=180。
+                3. **Age**: 提取年龄范围。如 "25到30岁" -> age_min=25, age_max=30；"大于20岁" -> age_min=20。
+                4. **BMI**: 根据描述提取BMI范围。
                    - "很瘦/骨感" -> bmi_max=18.5
                    - "瘦/苗条/纤细" -> bmi_max=20
                    - "不胖/匀称/标准" -> bmi_min=18.5, bmi_max=24
                    - "微胖/丰满/有肉/壮实" -> bmi_min=24, bmi_max=28
                    - "胖/大码" -> bmi_min=28
-                   - "不要太瘦" -> bmi_min=18.5
-                   - "不要胖的" -> bmi_max=24
-                   - "不要太胖" -> bmi_max=28 (包含微胖)
-                
                 例如:
-                - "我要找上海的" -> {{"mongo_query": {{"city": "上海"}}}}
-                - "25-30岁，微胖也可以" -> {{"age_min": 25, "age_max": 30, "bmi_max": 28}}
-                - "找个瘦一点的" -> {{"bmi_max": 20}}
-                
+                - "我要找上海或苏州的" -> {{"city": ["上海", "苏州"]}}
+                - "25-30岁，175以上" -> {{"age_min": 25, "age_max": 30, "height_min": 175}}
+                - "找个瘦一点的" -> {{"bmi_max": 20}}    
                 输出JSON: {format_instructions}"""
             ) | self.llm | self.filter_parser
         )
@@ -69,18 +63,55 @@ class FilterNode:
         
         try:
             res = self.filter_chain.invoke({
-                "user_profile_summary": state.get('current_user_summary', 'Unknown'),
                 "user_input": state['current_input'],
                 "format_instructions": self.filter_parser.get_format_instructions()
             })
-            query = res.mongo_query if res.mongo_query else {}
             
-            # [Safety] 清理可能存在的幻觉字段 (如 age, interests)
-            query.pop('age', None)
-            query.pop('interests', None)
-            query.pop('hobbies', None)
+            # 手动构建 Mongo Query
+            query = {}
+
+            # 1. City (List -> $in)
+            if res.city:
+                # 如果只有一个城市且不是列表（兼容旧习惯），转为列表
+                cities = res.city if isinstance(res.city, list) else [res.city]
+                if cities:
+                    query["city"] = {"$in": cities}
+
+            # 2. Height
+            if res.height_min or res.height_max:
+                h_query = {}
+                if res.height_min: h_query["$gte"] = res.height_min
+                if res.height_max: h_query["$lte"] = res.height_max
+                query["height"] = h_query
+
+            # 3. BMI (动态计算: weight / (height/100)^2)
+            if res.bmi_min or res.bmi_max:
+                # BMI = weight_kg / (height_m ^ 2)
+                # MongoDB aggregation syntax within $expr
+                bmi_calc = {
+                    "$divide": [
+                        "$weight", 
+                        {"$pow": [{"$divide": ["$height", 100]}, 2]}
+                    ]
+                }
+                
+                expr_conditions = []
+                if res.bmi_min:
+                    expr_conditions.append({"$gte": [bmi_calc, res.bmi_min]})
+                if res.bmi_max:
+                    expr_conditions.append({"$lte": [bmi_calc, res.bmi_max]})
+                
+                if expr_conditions:
+                    if "$expr" not in query:
+                        query["$expr"] = {"$and": expr_conditions}
+                    else:
+                        # 如果已有 $expr (虽然目前不太可能)，需要合并
+                        if "$and" not in query["$expr"]:
+                             query["$expr"] = {"$and": [query["$expr"]] + expr_conditions}
+                        else:
+                             query["$expr"]["$and"].extend(expr_conditions)
             
-            # 1. 处理年龄区间
+            # 4. 处理年龄区间
             age_min = res.age_min
             age_max = res.age_max
             if age_min or age_max:
@@ -100,7 +131,7 @@ class FilterNode:
                         query["birthday"] = {"$lte": max_birthday}
                     print(f"   -> Calculated birthday max: {max_birthday.strftime('%Y-%m-%d')}")
             
-            print(f"   -> LLM Query (before gender): {query}")
+            print(f"   -> Constructed Query (before gender): {query}")
             
             # 2. 强制注入性别筛选
             current_gender = state.get('current_user_gender')
