@@ -19,11 +19,8 @@ class DeepDiveNode:
                 
                 【用户问题】: {user_input}
                 
-                【候选人档案】:
-                - 基础信息: {basic_info}
-                - 性格/MBTI: {personality}
-                - 价值观: {values}
-                - 恋爱观: {love_style}
+                【候选人详细档案 (自我介绍)】:
+                {candidate_profile_summary}
                 
                 【过往聊天记录精选 (Evidence)】:
                 {chat_evidence}
@@ -40,47 +37,43 @@ class DeepDiveNode:
         candidates = state.get('final_candidates', [])
         
         # 1. 锁定目标
+        # 由于 IntentNode 已经处理了指代消解 (将代词/序数转为了名字)，
+        # 这里我们主要负责根据名字从 candidates 列表里捞出完整的对象。
         target_candidate = None
         
-        print(f"   [Debug] Target: '{target_name}', Candidates: {[c['nickname'] for c in candidates]}")
+        print(f"   [Debug] DeepDive Target Name: '{target_name}'")
 
-        # 策略 A: 精确匹配 (优先)
-        for c in candidates:
-            if target_name == c['nickname']:
-                target_candidate = c
-                break
-        
-        # 策略 B: 包含匹配 (次优)
-        if not target_candidate:
+        if target_name:
+            # 策略 A: 名字匹配 (优先匹配当前推荐列表)
             for c in candidates:
-                if target_name in c['nickname'] or c['nickname'] in target_name:
+                # 兼容 nickname 或 name 字段
+                c_name = c.get('nickname')
+                if c_name == target_name:
                     target_candidate = c
                     break
-                    
-        # 策略 C: 序号匹配 (如 "第二个")
+            
+            # 策略 B: 如果推荐列表里没有，尝试去 state['last_target_person'] 找
+            # (暂时略过，因为 IntentNode 应该保证了名字的一致性)
+
+        # 兜底: 依然找不到，生成反问
         if not target_candidate:
-            cn_nums = {"一": 0, "二": 1, "三": 2}
-            for cn, idx in cn_nums.items():
-                if f"第{cn}" in target_name and idx < len(candidates):
-                    target_candidate = candidates[idx]
-                    break
-        
-        # 如果找不到，尝试默认取第一个（如果用户没说名字）
-        if not target_candidate and candidates:
-             if not target_name: 
-                 target_candidate = candidates[0]
-        
-        if not target_candidate:
-            state['reply'] = f"抱歉，我不确定您指的是哪位。请告诉我名字，或者先让我为您推荐几位嘉宾。"
+            print("   ⚠️ 未找到目标用户，触发反问")
+            state['reply'] = f"抱歉，我不确定您指的是哪位。请告诉我具体的名字，或者您可以说“第一个”、“第二个”。"
             return state
             
-        print(f"🕵️ [DeepDive] 深入分析: {target_candidate['nickname']}")
+        print(f"🕵️ [DeepDive] 深入分析: {target_candidate.get('nickname')}")
         
         # 2. 准备数据
         uid = ObjectId(target_candidate['id'])
-        profile_doc = self.db.db["users_profile"].find_one({"user_id": uid})
-        persona_doc = self.db.users_persona.find_one({"user_id": uid})
+        profile_doc = self.db.db["users_profile"].find_one({"user_id": uid}) or {}
+        basic_doc = self.db.users_basic.find_one({'_id':uid}) or {}
         
+        # 调用 ProfileService 生成全量画像摘要 (比手动拼字段更全、更自然)
+        # 注意：这里需要 container.profile_service 单例，但我看 __init__ 里没引
+        # 临时引入一下，或者建议在 __init__ 里加上
+        from app.core.container import container
+        candidate_profile_summary = container.profile_service.generate_profile_summary(basic_doc, profile_doc)
+
         # 3. 检索聊天记录 (作为佐证)
         query = state['current_input']
         docs = self.chroma.retrieve_related_context(
@@ -96,10 +89,7 @@ class DeepDiveNode:
             res = self.deep_answer_chain.invoke({
                 "name": target_candidate['nickname'],
                 "user_input": state['current_input'],
-                "basic_info": f"{calc_age(self.db.users_basic.find_one({'_id':uid}).get('birthday'))}岁, {self.db.users_basic.find_one({'_id':uid}).get('city')}, {persona_doc.get('persona', {}).get('occupation')}",
-                "personality": str(profile_doc.get('personality_profile', {})),
-                "values": str(profile_doc.get('values_profile', {})),
-                "love_style": str(profile_doc.get('love_style_profile', {})),
+                "candidate_profile_summary": candidate_profile_summary,
                 "chat_evidence": chat_evidence
             })
             state['reply'] = res.content

@@ -125,8 +125,6 @@ class OnboardingNode:
                     # 考虑到并发风险低，直接 set 修改过的字段的最终值
                     
                     final_update_set = {}
-                    flat_updates = flatten_dict(update_payload) # 仅为了获取所有涉及的 key
-                    
                     # 重新从 full_profile 提取最终值，构造 $set
                     # 这里有一个技巧：因为 smart_merge 已经更新了 nested dict，
                     # 我们可以简单地把 update_payload 顶层 key 对应的 full_profile 值写回去

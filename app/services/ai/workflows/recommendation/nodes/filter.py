@@ -7,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from app.core.container import container
 from app.common.models.state import MatchmakingState
 from app.services.ai.workflows.recommendation.state import FilterOutput, RefineOutput
+from app.core.utils.cal_utils import calc_age
 
 class FilterNode:
     def __init__(self):
@@ -16,14 +17,25 @@ class FilterNode:
         self.filter_parser = PydanticOutputParser(pydantic_object=FilterOutput)
         self.filter_chain = (
             ChatPromptTemplate.from_template(
-                """你是信息提取专家。请从用户描述中提取硬性筛选条件。
+                """你是信息提取专家。请结合【当前用户信息】从【用户需求】中提取硬性筛选条件。
                 
-                用户需求: {user_input}
+                【当前用户信息】:
+                {user_info}
+                
+                【用户需求】: {user_input}
                 
                 【提取规则】:
-                1. **City**: 提取提到的所有城市，输出为字符串列表。如 "上海或杭州" -> ["上海", "杭州"]。
+                1. **City**: 提取提到的所有城市，输出为字符串列表。
+                   - 如 "上海或杭州" -> ["上海", "杭州"]。
+                   - 如果用户说"找老乡/同城"，请参考用户信息中的城市。
+                   - **相对位置处理**: 如果用户说 "周边", "附近", "隔壁城市" (如 "找周边的", "离我不远的"):
+                     请读取【当前用户信息】里的**City**作为中心点，列出该城市周围 100-200km 范围内的 3-5 个主要城市名称。
+                   - **模糊区域处理**: 如果用户说 "江浙沪", "大湾区" 等，请展开为该区域的核心城市列表。
+                   - **严禁**输出 "周边", "附近" 等模糊后缀。
                 2. **Height**: 提取身高范围(cm)。如 "1米8以上" -> height_min=180。
+                   - 如果用户说"比我高"，请参考用户身高计算。
                 3. **Age**: 提取年龄范围。如 "25到30岁" -> age_min=25, age_max=30；"大于20岁" -> age_min=20。
+                   - 如果用户说"比我大"，"和我差不多"(上下3岁)，请参考用户年龄。
                 4. **BMI**: 根据描述提取BMI范围。
                    - "很瘦/骨感" -> bmi_max=18.5
                    - "瘦/苗条/纤细" -> bmi_max=20
@@ -61,9 +73,16 @@ class FilterNode:
         """Step 2: 硬性筛选"""
         print(f"🔍 [HardFilter] 生成条件 (第 {state.get('search_count', 0) + 1} 次尝试)...")
         
+        user_basic = state.get('current_user_basic', {})
+        user_age = calc_age(user_basic.get('birthday')) if user_basic.get('birthday') else "未知"
+        user_info_str = (f"性别: {user_basic.get('gender', '未知')}, 年龄: {user_age}, "
+                         f"身高: {user_basic.get('height', '未知')}cm, 体重: {user_basic.get('weight', '未知')}kg, "
+                         f"城市: {user_basic.get('city', '未知')}")
+        
         try:
             res = self.filter_chain.invoke({
                 "user_input": state['current_input'],
+                "user_info": user_info_str,
                 "format_instructions": self.filter_parser.get_format_instructions()
             })
             
@@ -134,7 +153,7 @@ class FilterNode:
             print(f"   -> Constructed Query (before gender): {query}")
             
             # 2. 强制注入性别筛选
-            current_gender = state.get('current_user_gender')
+            current_gender = state.get('current_user_basic').get('gender')
             target_gender = None
             if current_gender:
                 cg = current_gender.lower()

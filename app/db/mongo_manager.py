@@ -18,6 +18,7 @@ class MongoDBManager:
         self.chat_records = self.db["chat_records"]
         self.profile = self.db["users_profile"]
         self.users_auth = self.db["users_auth"]
+        self.chat_sessions = self.db["chat_sessions"]
         self.users_states = self.db["users_states"] # 状态表 (注意：迁移脚本里用的是 user_states，这里保持一致)
         
         # Indexes

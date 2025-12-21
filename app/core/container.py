@@ -22,6 +22,7 @@ class AppContainer:
         self._chroma_manager: Optional[ChromaManager] = None
         self._workflow = None # Workflow 单例
         self._profile_service = None # ProfileService 单例
+        self._session_service = None # SessionService 单例
         self._termination_manager = None # TerminationManager 单例
         
         # LLM 缓存
@@ -34,6 +35,14 @@ class AppContainer:
         return cls._instance
 
     # --- Services (Singleton) ---
+    @property
+    def session_service(self):
+        """获取 SessionService 单例"""
+        if not self._session_service:
+            from app.services.session_service import SessionService
+            self._session_service = SessionService()
+        return self._session_service
+
     @property
     def profile_service(self):
         """获取 ProfileService 单例"""

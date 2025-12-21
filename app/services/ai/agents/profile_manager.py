@@ -75,8 +75,8 @@ class ProfileService:
 
     def generate_profile_summary(self, basic: Dict, profile: Dict) -> str:
         """
-        使用 LLM 将结构化画像转换为自然语言摘要 (用于向量化)。
-        生成一段第一人称的、真诚的自我介绍。
+        使用 LLM 将结构化画像转换为自然语言摘要 (用于向量化和详情展示)。
+        生成一段第三人称的、专业且生动的个人画像。
         """
         import json
         from langchain_core.prompts import ChatPromptTemplate
@@ -90,8 +90,8 @@ class ProfileService:
         basic_str = json.dumps(basic_safe, ensure_ascii=False, default=str)
 
         prompt = ChatPromptTemplate.from_template(
-            """请根据以下用户的【基础信息】和【详细画像】，以**第一人称**（“我”）写一段自然、真诚、详细的个人介绍。
-            这段介绍将用于寻找约会对象，所以请突出优点，展现真诚的态度。
+            """请根据以下用户的【基础信息】和【详细画像】，以**第三人称**（称呼其昵称：{nickname}）写一段专业、生动、详尽的个人画像描述。
+            这段描述将由专业红娘用于向其他嘉宾介绍该用户，或进行深度匹配分析。
 
             【基础信息】:
             {basic_info}
@@ -100,17 +100,21 @@ class ProfileService:
             {profile_data}
 
             【要求】:
-            1. **包含所有核心信息**：自然地融入年龄、学历、职业、家庭背景、性格特点(MBTI/Big5)、兴趣爱好、核心价值观、生活方式等。
-            2. **自然流畅**：严禁像填表一样罗列数据，要像真人在聊天或写自述。
-            3. **突出个性**：结合性格和兴趣，展现独特的人格魅力。
-            4. **字数控制**：300-400字左右。
+            1. **称呼**: 全程使用昵称“{nickname}”或“他/她”，严禁使用第一人称“我”。
+            2. **内容全面**: 自然地融入年龄、学历、职业、家庭背景、性格特点(MBTI/Big5)、
+            兴趣爱好、核心价值观、生活方式、恋爱观等，详细画像中提到的你都要体现出来。
+            3. **文笔生动**: 像一位资深红娘在向人推介，既要客观真实，也要展现该嘉宾的人格魅力和闪光点。
+            4. **逻辑清晰**: 不要简单罗列，要通过因果、转折等逻辑将各维度信息串联成一篇丝滑的文章。
+            5. **字数控制**: 350-450字左右。
 
-            请直接输出自我介绍文本。"""
+            请直接输出画像描述文本。"""
         )
         
+        nickname = basic.get('nickname', '该嘉宾')
         chain = prompt | self.completion_llm
         try:
             res = chain.invoke({
+                "nickname": nickname,
                 "basic_info": basic_str,
                 "profile_data": profile_str
             })

@@ -4,8 +4,6 @@ from bson import ObjectId
 from langchain_core.documents import Document
 
 from app.core.container import container
-# from app.services.ai.agents.user_factory import VirtualUserGenerator # Module missing
-from app.services.ai.agents.profile_manager import ProfileService
 # from app.services.ai.tools.termination import DialogueTerminationManager # Removed
 from app.core.config import settings
 
@@ -25,88 +23,6 @@ class UserInitializationService:
         
         self.termination_manager = container.termination_manager
         self.profile_service = container.profile_service
-
-    def create_and_onboard_single_user(self) -> ObjectId:
-        """
-        [后台脚本用] 执行单个用户的完整生命周期初始化。
-        """
-        print("\n" + "="*50)
-        print("🚀 [Atomic] 开始初始化新用户流程...")
-        
-        user_id = None
-
-        try:
-            # 1. 生成用户 (Generate)
-            print("  1️⃣ 生成虚拟用户基础信息...")
-            user_obj = self.user_gen.generate_user()
-            
-            # 存入 MongoDB (User Basic)
-            user_data_for_mongo = user_obj.model_dump(exclude_none=True)
-            # 确保 birthday 是 date 对象
-            if isinstance(user_data_for_mongo.get("birthday"), str):
-                try:
-                    user_data_for_mongo["birthday"] = date.fromisoformat(user_data_for_mongo["birthday"])
-                except ValueError:
-                    user_data_for_mongo["birthday"] = date(2000,1,1)
-            
-            persona_dict = user_data_for_mongo.pop("persona_seed") 
-            user_id = self.db_manager.insert_user_with_persona(user_data_for_mongo, persona_dict)
-            print(f"     ✅ 用户创建成功: {user_obj.nickname} (ID: {user_id})")
-
-            # 2. 红娘对话 (Onboarding)
-            print("  2️⃣ 开启 AI 红娘 Onboarding 对话...")
-            # 这里的 Onboarding Generator 会生成一整套对话并存入 DB
-            conversation_history = self.onboarding_gen.generate_for_user(
-                user_id,
-                self.db_manager,
-                min_turns=settings.generation.min_onboarding_turns,
-                max_turns=settings.generation.max_onboarding_turns
-            )
-            print(f"     ✅ 对话结束，共 {len(conversation_history)} 条消息")
-
-            # 3. 提取与向量化 (调用复用的 finalize 逻辑)
-            # 注意: 这里 finalize 会读取 DB 里的对话。generate_for_user 已经存了。
-            # 但 finalize 也会尝试读取 users_profile。
-            # 之前的逻辑是: 生成脚本是"一次性提取"。
-            # 现在的 finalize 逻辑假设 users_profile 已经增量提取了。
-            # 矛盾点: 生成脚本 (TurnByTurn) 并没有增量提取逻辑！它只存了对话。
-            # 所以，对于生成脚本，我们需要先"全量提取"，再"finalize"。
-            
-            print("  3️⃣ 提取全量画像 (Batch Mode)...")
-            dialogue_text = self.profile_service.format_dialogue_for_llm(conversation_history)
-            profile_data = self.profile_service.extract_from_dialogue(dialogue_text)
-            
-            profile_data["user_id"] = user_id
-            profile_data["updated_at"] = datetime.now()
-            self.db_manager.db["users_profile"].update_one(
-                {"user_id": user_id},
-                {"$set": profile_data},
-                upsert=True
-            )
-            
-            # 现在可以调用 finalize 了 (它会负责向量化和标记)
-            success = self.finalize_user_onboarding(str(user_id))
-            if not success:
-                raise Exception("Finalization failed.")
-
-            print(f"✨ 用户 [{user_obj.nickname}] 初始化流程全部完成!")
-            return user_id
-
-        except Exception as e:
-            print(f"❌ 初始化过程中断，正在回滚(删除)用户数据: {user_id}")
-            if user_id:
-                try:
-                    self.db_manager.users_basic.delete_one({"_id": user_id})
-                    self.db_manager.users_persona.delete_one({"user_id": user_id})
-                    self.db_manager.onboarding_dialogues.delete_one({"user_id": user_id})
-                    self.db_manager.db["users_profile"].delete_one({"user_id": user_id})
-                    self.db_manager.chat_records.delete_many({"user_id": user_id})
-                    self.db_manager.users_states.delete_one({"user_id": user_id})
-                    print("     ✅ 脏数据清理完成")
-                except Exception as cleanup_error:
-                    print(f"     ⚠️ 清理脏数据失败: {cleanup_error}")
-            
-            raise e 
 
     def finalize_user_onboarding(self, user_id: str) -> bool:
         """
