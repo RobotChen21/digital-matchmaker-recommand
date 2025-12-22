@@ -9,6 +9,8 @@ class DatabaseConfig(BaseModel):
     db_name: str
     chroma_persist_dir: str
     chroma_collection_name: str
+    es_url: str
+    es_index_name: str
 
 class LLMConfig(BaseModel):
     model_name: str

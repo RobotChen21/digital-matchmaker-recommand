@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.utils.env_utils import API_KEY, BASE_URL
+from app.db.es_manager import ESManager
 from app.db.mongo_manager import MongoDBManager
 from app.db.chroma_manager import ChromaManager
 
@@ -20,6 +21,7 @@ class AppContainer:
         # 延迟初始化变量
         self._mongo_manager: Optional[MongoDBManager] = None
         self._chroma_manager: Optional[ChromaManager] = None
+        self._es_manager: Optional[ESManager] = None
         self._workflow = None # Workflow 单例
         self._profile_service = None # ProfileService 单例
         self._session_service = None # SessionService 单例
@@ -93,6 +95,14 @@ class AppContainer:
                 settings.database.chroma_collection_name
             )
         return self._chroma_manager
+
+    @property
+    def es(self):
+        """获取 Elasticsearch Manager 单例"""
+        if not hasattr(self, "_es_manager") or not self._es_manager:
+            from app.db.es_manager import ESManager
+            self._es_manager = ESManager()
+        return self._es_manager
 
     # --- LLM Factory (Cached by Type) ---
 

@@ -151,4 +151,14 @@ class ResponseNode:
                  state['reply'] = "为您找到以下嘉宾:\n" + candidates_info
 
         print(f"🤖 [Response Done]: {state['reply'][:50]}...")
+        
+        # [NEW] 更新“已阅名单” (seen_candidate_ids) 以支持“换一批”
+        if candidates:
+            current_seen = state.get('seen_candidate_ids', [])
+            new_ids = [c['id'] for c in candidates]
+            # 去重合并
+            updated_seen = list(set(current_seen + new_ids))
+            state['seen_candidate_ids'] = updated_seen
+            print(f"   📝 已阅名单更新: +{len(new_ids)} 人 (Total: {len(updated_seen)})")
+
         return state

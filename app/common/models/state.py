@@ -36,7 +36,6 @@ class MatchmakingState(TypedDict):
     last_search_criteria: Optional[Dict] # [NEW] 上一轮的搜索条件 (用于"换一批"继承: hard_filters, semantic_query, match_policy)
     
     # 6. 用户画像上下文
-    # current_user_gender: Optional[str] # 当前用户性别
     current_user_basic: Optional[Dict]
     current_user_summary: Optional[str] # 当前用户基础信息+画像摘要
     current_user_profile: Optional[Dict] # [NEW] 当前用户完整画像结构体

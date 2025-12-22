@@ -4,7 +4,6 @@ from bson import ObjectId
 from langchain_core.documents import Document
 
 from app.core.container import container
-# from app.services.ai.tools.termination import DialogueTerminationManager # Removed
 from app.core.config import settings
 
 class UserInitializationService:
@@ -16,6 +15,7 @@ class UserInitializationService:
     def __init__(self):
         self.db_manager = container.db
         self.chroma_manager = container.chroma
+        self.es_manager = container.es # <--- 从容器获取
         
         # 初始化各个子服务
         self.llm_ai = container.get_llm("chat")
@@ -32,7 +32,7 @@ class UserInitializationService:
         1. (可选) 读取全量对话
         2. (可选) 提取画像 -> 存库 
            (注意: 现在的逻辑假设画像已经存在库里了。对于生成脚本，前面已经提了。对于实时对话，OnboardingNode已经增量提了)
-        3. 向量化画像 -> 存库
+        3. 向量化画像 -> 存库 (Chroma + ES)
         4. 向量化对话 -> 存库
         5. 标记用户为 is_completed=True
         """
@@ -43,6 +43,7 @@ class UserInitializationService:
             # 0. 清理旧向量 (幂等性)
             try:
                 self.chroma_manager.vector_db.delete(where={"user_id": str(uid)})
+                # TODO: 以后可以考虑清理 ES，但 ES 的 index 方法本身就是覆盖式的 (Upsert)，所以不删也行
             except:
                 pass
 
@@ -75,8 +76,59 @@ class UserInitializationService:
                 try: metadata['birth_year'] = int(user_basic.get('birthday').split('-')[0])
                 except: pass
 
-            doc = Document(page_content=summary_text, metadata=metadata)
-            self.chroma_manager.vector_db.add_documents([doc])
+            # 写入 ES (新增混合检索同步)
+            print("   🔍 同步到 Elasticsearch (Hybrid Search)...")
+            try:
+                # 提取关键词标签 (全面覆盖文本字段)
+                interest_info = profile_data.get("interest_profile", {}) or {}
+                tags_list = interest_info.get("tags", [])
+                tags_str = " ".join(tags_list) if isinstance(tags_list, list) else ""
+                
+                edu_info = profile_data.get("education_profile", {}) or {}
+                highest_degree = edu_info.get("highest_degree", "")
+                major = edu_info.get("major", "")
+                
+                occ_info = profile_data.get("occupation_profile", {}) or {}
+                job_title = occ_info.get("job_title", "")
+                industry = occ_info.get("industry", "")
+
+                fam_info = profile_data.get("family_profile", {}) or {}
+                family_struct = fam_info.get("family_structure", "")
+                
+                life_info = profile_data.get("lifestyle_profile", {}) or {}
+                smoking = life_info.get("smoking", "")
+                drinking = life_info.get("drinking", "")
+                
+                pers_info = profile_data.get("personality_profile", {}) or {}
+                mbti = pers_info.get("mbti", "")
+                
+                love_info = profile_data.get("love_style_profile", {}) or {}
+                attachment = love_info.get("attachment_style", "")
+                
+                raw_keywords = [
+                    tags_str, highest_degree, major, job_title, industry, 
+                    family_struct, smoking, drinking, mbti, attachment,
+                    user_basic.get('city', '')
+                ]
+                keyword_tags = " ".join([str(k) for k in raw_keywords if k])
+                
+                # 获取向量 (复用 Chroma 的模型)
+                vector = self.chroma_manager.embeddings_model.embed_query(summary_text)
+                
+                # 索引到 ES
+                self.es_manager.index_user(
+                    user_id=str(user_id),
+                    profile_data={
+                        "gender": user_basic.get("gender"),
+                        "city": user_basic.get("city"),
+                        "age": user_basic.get("age") or 0,
+                        "tags": keyword_tags,
+                        "profile_text": summary_text
+                    },
+                    vector=vector
+                )
+            except Exception as es_err:
+                print(f"   ⚠️ ES 同步失败 (非致命错误): {es_err}")
             
             # 4. 向量化对话
             print("   💬 向量化对话记录...")

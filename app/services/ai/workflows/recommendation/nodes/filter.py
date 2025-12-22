@@ -17,14 +17,14 @@ class FilterNode:
         self.filter_parser = PydanticOutputParser(pydantic_object=FilterOutput)
         self.filter_chain = (
             ChatPromptTemplate.from_template(
-                """你是信息提取专家。请结合【当前用户信息】从【用户需求】中提取硬性筛选条件。
+                """你是红娘推荐系统的搜索解析中枢。请从【用户需求】中一次性提取**硬性过滤条件(Mongo)**和**语义检索关键词(ES)**。
                 
                 【当前用户信息】:
                 {user_info}
                 
                 【用户需求】: {user_input}
                 
-                【提取规则】:
+                # 任务一：提取硬性过滤条件 (Mongo)
                 1. **City**: 提取提到的所有城市，输出为字符串列表。
                    - 如 "上海或杭州" -> ["上海", "杭州"]。
                    - 如果用户说"找老乡/同城"，请参考用户信息中的城市。
@@ -42,10 +42,26 @@ class FilterNode:
                    - "不胖/匀称/标准" -> bmi_min=18.5, bmi_max=24
                    - "微胖/丰满/有肉/壮实" -> bmi_min=24, bmi_max=28
                    - "胖/大码" -> bmi_min=28
-                例如:
-                - "我要找上海或苏州的" -> {{"city": ["上海", "苏州"]}}
-                - "25-30岁，175以上" -> {{"age_min": 25, "age_max": 30, "height_min": 175}}
-                - "找个瘦一点的" -> {{"bmi_max": 20}}    
+                
+                # 任务二：提取语义关键词 (ES Hybrid Search)
+                请从用户需求中提取**所有**关于理想对象的描述词（关键词），用空格分隔。比如以下
+                1. **教育与职业**: 学历(硕士/985/学校名)、专业、职位(程序员/经理)、行业、收入水平
+                2. **家庭背景**: 成员状况(独生子女/有兄弟姐妹)、父母职业、经济条件。
+                3. **生活方式**: 运动习惯、社交偏好、烟酒情况(不抽烟/偶尔喝酒)。
+                4. **性格与三观**: MBTI/人格特质(温柔/开朗/内向)、价值观偏好。
+                5. **情感与兴趣**: 恋爱风格(依恋类型/恋爱语言)、兴趣标签(滑雪/看书)。
+                **提取范围**：      
+                - 包括但不限于：学历要求、职业特征、家庭状况、性格特质、生活习惯、兴趣爱好、三观倾向等。 
+                
+                **唯一排除项**：
+                - 请**不要**包含：City, Age, Height, Gender, BMI (这些已在任务一处理)。
+                
+                **Examples**:
+                - "找上海或苏州的985程序员，1米75以上" 
+                  -> {{"city": ["上海", "苏州"], "height_min": 175}}, Keywords="985 程序员"
+                - "我要找个工作稳定的独生女，父母有退休金，不抽烟" 
+                  -> Keywords="工作稳定 独生女 父母有退休金 不抽烟"
+                
                 输出JSON: {format_instructions}"""
             ) | self.llm | self.filter_parser
         )
@@ -70,8 +86,8 @@ class FilterNode:
         )
 
     def hard_filter(self, state: MatchmakingState):
-        """Step 2: 硬性筛选"""
-        print(f"🔍 [HardFilter] 生成条件 (第 {state.get('search_count', 0) + 1} 次尝试)...")
+        """Step 2: 统一提取 (Hard Filters + Semantic Keywords)"""
+        print(f"🔍 [Filter] 提取条件 (第 {state.get('search_count', 0) + 1} 次尝试)...")
         
         user_basic = state.get('current_user_basic', {})
         user_age = calc_age(user_basic.get('birthday')) if user_basic.get('birthday') else "未知"
@@ -86,61 +102,52 @@ class FilterNode:
                 "format_instructions": self.filter_parser.get_format_instructions()
             })
             
-            # 手动构建 Mongo Query
+            # --- 1. 处理 Hard Filters (Mongo) ---
             query = {}
 
-            # 1. City (List -> $in)
+            # City
             if res.city:
-                # 如果只有一个城市且不是列表（兼容旧习惯），转为列表
                 cities = res.city if isinstance(res.city, list) else [res.city]
                 if cities:
                     query["city"] = {"$in": cities}
 
-            # 2. Height
+            # Height
             if res.height_min or res.height_max:
                 h_query = {}
                 if res.height_min: h_query["$gte"] = res.height_min
                 if res.height_max: h_query["$lte"] = res.height_max
                 query["height"] = h_query
 
-            # 3. BMI (动态计算: weight / (height/100)^2)
+            # BMI
             if res.bmi_min or res.bmi_max:
-                # BMI = weight_kg / (height_m ^ 2)
-                # MongoDB aggregation syntax within $expr
                 bmi_calc = {
                     "$divide": [
                         "$weight", 
                         {"$pow": [{"$divide": ["$height", 100]}, 2]}
                     ]
                 }
-                
                 expr_conditions = []
-                if res.bmi_min:
-                    expr_conditions.append({"$gte": [bmi_calc, res.bmi_min]})
-                if res.bmi_max:
-                    expr_conditions.append({"$lte": [bmi_calc, res.bmi_max]})
+                if res.bmi_min: expr_conditions.append({"$gte": [bmi_calc, res.bmi_min]})
+                if res.bmi_max: expr_conditions.append({"$lte": [bmi_calc, res.bmi_max]})
                 
                 if expr_conditions:
                     if "$expr" not in query:
                         query["$expr"] = {"$and": expr_conditions}
                     else:
-                        # 如果已有 $expr (虽然目前不太可能)，需要合并
                         if "$and" not in query["$expr"]:
                              query["$expr"] = {"$and": [query["$expr"]] + expr_conditions}
                         else:
                              query["$expr"]["$and"].extend(expr_conditions)
             
-            # 4. 处理年龄区间
+            # Age
             age_min = res.age_min
             age_max = res.age_max
             if age_min or age_max:
                 current_year = datetime.now().year
                 if age_max:
                     max_birth_year = current_year - age_max
-                    # PyMongo requires datetime.datetime, not datetime.date
                     min_birthday = datetime(max_birth_year, 1, 1)
                     query["birthday"] = {"$gte": min_birthday}
-                    print(f"   -> Calculated birthday min: {min_birthday.strftime('%Y-%m-%d')}")
                 if age_min:
                     min_birth_year = current_year - age_min
                     max_birthday = datetime(min_birth_year, 12, 31)
@@ -148,47 +155,44 @@ class FilterNode:
                         query["birthday"]["$lte"] = max_birthday
                     else:
                         query["birthday"] = {"$lte": max_birthday}
-                    print(f"   -> Calculated birthday max: {max_birthday.strftime('%Y-%m-%d')}")
             
-            print(f"   -> Constructed Query (before gender): {query}")
-            
-            # 2. 强制注入性别筛选
+            # Gender (强制异性)
             current_gender = state.get('current_user_basic').get('gender')
             target_gender = None
             if current_gender:
                 cg = current_gender.lower()
                 if cg == 'female': target_gender = 'male'
                 elif cg == 'male': target_gender = 'female'
-            
             if target_gender:
                 query['gender'] = target_gender
 
-            # 3. 排除自己 和 排除已见过的候选人 ("换一批")
+            # Exclude self & seen
             exclude_ids = [ObjectId(state['user_id'])]
-            
             seen_ids = state.get('seen_candidate_ids', [])
             if seen_ids:
-                print(f"   -> Excluding {len(seen_ids)} previously seen candidates.")
                 for sid in seen_ids:
-                    try:
-                        exclude_ids.append(ObjectId(sid))
-                    except:
-                        pass
-            
+                    try: exclude_ids.append(ObjectId(sid))
+                    except: pass
             query["_id"] = {"$nin": exclude_ids}
             
-            print(f"   -> Final Mongo Query: {query}")
-
-            cursor = self.db.users_basic.find(query, {"_id": 1}).limit(50)
+            # --- 执行 Mongo 查询 ---
+            print(f"   -> Hard Filter: {query}")
+            # limit 稍微放宽给 ES 留空间
+            cursor = self.db.users_basic.find(query, {"_id": 1}).limit(200)
             candidate_ids = [str(doc['_id']) for doc in cursor]
             
             state['hard_filters'] = query
             state['hard_candidate_ids'] = candidate_ids
-            print(f"   -> 命中: {len(candidate_ids)} 人")
+            
+            # --- 2. 处理 Semantic Keywords (ES) ---
+            state['semantic_query'] = res.keywords
+            print(f"   -> Semantic Keywords: '{res.keywords}'")
+            print(f"   -> 命中(Mongo): {len(candidate_ids)} 人")
             
         except Exception as e:
-            print(f"   ❌ 筛选失败: {e}")
+            print(f"   ❌ 筛选解析失败: {e}")
             state['hard_candidate_ids'] = []
+            state['semantic_query'] = ""
             
         return state
 
