@@ -70,7 +70,7 @@ class RankingNode:
         print(f"⚖️ [Ranking] 心理学匹配计算 (候选人: {len(top_ids)})...")
         
         # 加载当前用户画像 (用于比对)
-        current_profile = state.get('current_user_profile')
+        current_profile = state.get('current_user_profile') or {}
         
         scored_candidates = []
         
@@ -107,11 +107,18 @@ class RankingNode:
         # 最终排序
         scored_candidates.sort(key=lambda x: x['score'], reverse=True)
         
-        # 取 Top 5 (给前端展示)
-        final_candidates = scored_candidates[:5]
+        # 取 Top 3 (给前端展示)
+        final_candidates = scored_candidates[:3]
         state['final_candidates'] = final_candidates
+        
+        # [NEW] 更新已阅名单
+        seen_ids = state.get('seen_candidate_ids', [])
+        new_ids = [c['id'] for c in final_candidates]
+        # 合并并去重
+        state['seen_candidate_ids'] = list(set(seen_ids + new_ids))
         
         print(f"   -> 冠军: {final_candidates[0]['nickname']} (分: {final_candidates[0]['score']})")
         print(f"   -> 理由: {final_candidates[0]['match_reasons']}")
+        print(f"   -> 已阅名单已更新 (Total: {len(state['seen_candidate_ids'])})")
         
         return state

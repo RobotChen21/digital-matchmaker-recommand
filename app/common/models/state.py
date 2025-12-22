@@ -17,7 +17,6 @@ class MatchmakingState(TypedDict):
     intent: Optional[str]     # 识别出的意图
     hard_filters: Dict        # 硬性过滤条件
     semantic_query: str       # 语义检索关键词
-    match_policy: Dict        # 匹配策略 (从 IntentOutput.match_policy 转换而来)
     
     # 3. 召回结果
     hard_candidate_ids: List[str]      # 硬性筛选出的候选人 ID 列表
@@ -33,7 +32,8 @@ class MatchmakingState(TypedDict):
     target_person_name: Optional[str]  # 当前正在深度探索的目标名字
     last_target_person: Optional[str]  # 上一轮深度探索的目标名字 (用于指代消解)
     seen_candidate_ids: List[str]      # [NEW] 已经推荐过的候选人 ID 列表 (用于"换一批"排除)
-    last_search_criteria: Optional[Dict] # [NEW] 上一轮的搜索条件 (用于"换一批"继承: hard_filters, semantic_query, match_policy)
+    last_search_criteria: Optional[Dict] # [NEW] 上一轮的搜索条件 (用于"换一批"继承)
+    refined_criteria: Optional[Dict]   # [NEW] 自修正产生的结构化条件 (Refine -> Filter 传递用)
     
     # 6. 用户画像上下文
     current_user_basic: Optional[Dict]

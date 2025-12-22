@@ -40,7 +40,8 @@ class RecommendationGraphBuilder:
     
     def route_intent(self, state: MatchmakingState) -> str:
         intent = state.get('intent')
-        if intent == "search_candidate":
+        # 无论是新发起搜索(search)还是翻页换一批(refresh)，都走过滤与解析节点
+        if intent in ["search_candidate", "refresh_candidate"]:
             return "hard_filter"
         elif intent == "deep_dive":
             return "deep_dive"

@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-from typing import Literal, List, Dict, Any, Optional
+from typing import Literal, List, Optional
 from pydantic import BaseModel, Field
-from app.common.models.state import MatchmakingState 
 
 # --- Policy Model ---
 class IntentOutput(BaseModel):
-    intent: Literal["search_candidate", "deep_dive", "chitchat"] = Field(
-        description="意图: search_candidate(找人/换一批), deep_dive(问某人详情/感兴趣), chitchat(闲聊)"
+    intent: Literal["search_candidate", "refresh_candidate", "deep_dive", "chitchat"] = Field(
+        description="意图: search_candidate(新搜索/改条件), refresh_candidate(换一批/翻页), deep_dive(问详情), chitchat(闲聊)"
     )
 
 class FilterOutput(BaseModel):
@@ -25,8 +24,9 @@ class FilterOutput(BaseModel):
     explanation: str = Field(description="筛选条件解释")
 
 class RefineOutput(BaseModel):
-    relaxed_query: str = Field(description="放宽后的查询描述")
-    reason: str = Field(description="理由")
+    criteria: FilterOutput = Field(description="放宽后的具体筛选条件")
+    relaxed_query_str: str = Field(description="放宽后的自然语言描述 (用于前端展示/更新current_input)")
+    reason: str = Field(description="修正理由")
 
 class EvidenceOutput(BaseModel):
     has_evidence: bool = Field(description="是否找到证据")
