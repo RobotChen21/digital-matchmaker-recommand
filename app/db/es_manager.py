@@ -124,70 +124,95 @@ class ESManager:
                       top_k: int = 20, 
                       filters: Optional[Dict] = None) -> List[Dict]:
         """
-        核心方法：混合检索 (BM25 + KNN + RRF)
+        核心方法：混合检索 (Manual RRF Implementation)
+        [Fix] 在应用层手动实现 RRF，以绕过 ES Basic License 不支持 rank 参数的限制。
         """
-        # 1. 构建 KNN 查询 (语义向量)
-        knn_query = {
-            "field": "profile_vector",
-            "query_vector": query_vector,
-            "k": top_k,
-            "num_candidates": 100,
-            "boost": 0.5 # 语义分权重
-        }
-
-        # 2. 构建 Keyword 查询 (BM25)
-        # 重点关注 tags (硬性标签) 和 profile_text (整体描述)
+        # --- 构造过滤条件 (共享) ---
         must_clauses = []
         if filters:
-             # 这里可以把 Mongo 的 L1 结果作为 filter 传进来，或者直接在 ES 做简单过滤
-             # 暂时只处理简单 Term 过滤
              for k, v in filters.items():
-                 must_clauses.append({"term": {k: v}})
+                 if isinstance(v, list):
+                     must_clauses.append({"terms": {k: v}})
+                 else:
+                     must_clauses.append({"term": {k: v}})
+        
+        filter_query = {"bool": {"must": must_clauses}} if must_clauses else None
 
-        keyword_query = {
-            "bool": {
-                "must": must_clauses,
-                "should": [
-                    {
-                        "multi_match": {
-                            "query": query_text,
-                            "fields": ["tags^3", "profile_text"], # tags 权重 x3
-                            "type": "best_fields",
-                            "boost": 0.5
-                        }
-                    }
-                ]
-            }
-        }
-
-        # 3. 执行混合检索 (ES 8.x 标准写法)
+        # --- 1. 执行 KNN 搜索 (Vector) ---
+        knn_hits = []
         try:
-            response = self.client.search(
+            knn_res = self.client.search(
                 index=self.index_name,
-                knn=knn_query,
-                query=keyword_query,
-                size=top_k,
-                # RRF (Reciprocal Rank Fusion)
-                rank={
-                    "rrf": {
-                        "window_size": 50,
-                        "rank_constant": 20
-                    }
+                knn={
+                    "field": "profile_vector",
+                    "query_vector": query_vector,
+                    "k": top_k * 2, # 多取一些用于融合
+                    "num_candidates": 100,
+                    "filter": filter_query # 向量搜索也能带 filter
                 },
-                _source=["user_id", "tags", "gender", "age", "city"] # 只返回关键字段
+                size=top_k * 2,
+                _source=["user_id", "tags", "gender", "age", "city"]
             )
-            
-            hits = response.get("hits", {}).get("hits", [])
-            results = []
-            for hit in hits:
-                results.append({
-                    "user_id": hit["_source"]["user_id"],
-                    "score": hit["_score"], # RRF score
-                    "tags": hit["_source"].get("tags"),
-                    "city": hit["_source"].get("city")
-                })
-            return results
-
+            knn_hits = knn_res.get("hits", {}).get("hits", [])
         except Exception as e:
-            logger.error(f"Hybrid search failed: {e}")
-            return []
+            logger.error(f"KNN search failed: {e}")
+
+        # --- 2. 执行 Text 搜索 (BM25) ---
+        text_hits = []
+        try:
+            keyword_query = {
+                "bool": {
+                    "must": must_clauses,
+                    "should": [
+                        {
+                            "multi_match": {
+                                "query": query_text,
+                                "fields": ["tags^3", "profile_text"], 
+                                "type": "best_fields"
+                            }
+                        }
+                    ]
+                }
+            }
+            text_res = self.client.search(
+                index=self.index_name,
+                query=keyword_query,
+                size=top_k * 2,
+                _source=["user_id", "tags", "gender", "age", "city"]
+            )
+            text_hits = text_res.get("hits", {}).get("hits", [])
+        except Exception as e:
+            logger.error(f"Text search failed: {e}")
+
+        # --- 3. 应用 RRF 融合 (Reciprocal Rank Fusion) ---
+        # Formula: score = 1 / (k + rank)
+        rrf_k = 60
+        scores = {}
+        doc_map = {}
+
+        # 处理 KNN 结果
+        for rank, hit in enumerate(knn_hits):
+            uid = hit["_source"]["user_id"]
+            doc_map[uid] = hit["_source"]
+            scores[uid] = scores.get(uid, 0.0) + (1.0 / (rrf_k + rank + 1))
+
+        # 处理 Text 结果
+        for rank, hit in enumerate(text_hits):
+            uid = hit["_source"]["user_id"]
+            if uid not in doc_map:
+                doc_map[uid] = hit["_source"]
+            scores[uid] = scores.get(uid, 0.0) + (1.0 / (rrf_k + rank + 1))
+
+        # --- 4. 排序并返回 ---
+        sorted_uids = sorted(scores.keys(), key=lambda u: scores[u], reverse=True)
+        final_results = []
+        
+        for uid in sorted_uids[:top_k]:
+            final_results.append({
+                "user_id": uid,
+                "score": scores[uid],
+                "tags": doc_map[uid].get("tags"),
+                "city": doc_map[uid].get("city")
+            })
+            
+        return final_results

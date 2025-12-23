@@ -72,6 +72,11 @@ class RankingNode:
         # 加载当前用户画像 (用于比对)
         current_profile = state.get('current_user_profile') or {}
         
+        # [Debug] 检查当前用户画像数据
+        u_mbti = self._get_profile_field(current_profile, 'personality_profile', 'mbti', '无')
+        u_tags = self._get_profile_field(current_profile, 'interest_profile', 'tags', [])
+        print(f"   🧐 [Ranking Debug] Current User: MBTI={u_mbti}, Tags={u_tags}")
+        
         scored_candidates = []
         
         for uid in top_ids:
@@ -98,6 +103,7 @@ class RankingNode:
             
             # 构造 Summary (用于 Chat 里的 context)
             age = calc_age(basic.get('birthday'))
+            basic['age'] = age
             job = self._get_profile_field(profile, 'occupation_profile', 'job_title', '未知职业')
             edu = self._get_profile_field(profile, 'education_profile', 'highest_degree', '')
             basic['summary'] = f"【{basic['nickname']}】 {age}岁 {basic.get('city')} | {job} | {edu}"

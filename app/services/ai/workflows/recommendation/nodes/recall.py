@@ -38,6 +38,11 @@ class RecallNode:
             # 3. 结果整理
             semantic_ids = [res['user_id'] for res in results]
             
+            # [Debug] 打印 ES 原始得分情况
+            print("   🔍 [Recall Debug] Top 5 ES Scores:")
+            for i, r in enumerate(results[:5]):
+                print(f"      {i+1}. ID: {r.get('user_id')} | Score: {r.get('score'):.4f} | Tags: {r.get('tags')}")
+
             # 如果 ES 没搜到足够的人 (比如 L1 过滤太严了)，用原有的候选人垫底
             if len(semantic_ids) < 5:
                 print("   ⚠️ ES 召回结果较少，尝试合并 L1 候选人...")
