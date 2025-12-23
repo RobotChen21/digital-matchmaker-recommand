@@ -118,8 +118,12 @@ class DeepDiveNode:
         profile_doc = self.db.db["users_profile"].find_one({"user_id": uid}) or {}
         basic_doc = self.db.users_basic.find_one({'_id':uid}) or {}
         
-        # 生成画像摘要 (复用业务逻辑)
-        candidate_profile_summary = self.profile_service.generate_profile_summary(basic_doc, profile_doc)
+        # 生成画像摘要 (使用带缓存的新方法)
+        candidate_profile_summary = self.profile_service.get_profile_summary_with_cache(
+            basic_doc, 
+            profile_doc, 
+            self.db.profile
+        )
 
         # 检索聊天记录 (Evidence)
         query = state['current_input']

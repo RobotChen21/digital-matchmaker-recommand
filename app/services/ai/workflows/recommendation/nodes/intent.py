@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime, date
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
@@ -25,10 +24,12 @@ class IntentNode:
                 【最新输入】: {user_input}
                 
                 【判断标准】:
-                1. **search_candidate**: 用户想**发起新搜索**或**修改筛选条件**。
-                   - 例如: "找个180的", "换个年轻点的", "我想找上海的", "有没有程序员"。
-                2. **refresh_candidate**: 用户对当前条件没意见，仅仅想**换一批人** / **翻页**。
-                   - 例如: "换一批", "再推荐几个", "还有吗", "不满意", "看点别的"。
+                1. **search_candidate**: 用户想**发起搜索** (无论是新搜索还是修改条件)。
+                   - 场景 A: 带具体条件的查询 (如 "找个180的", "换个年轻点的", "有没有程序员").
+                   - 场景 B: 模糊的、初始的推荐请求 (如 "给我推荐几个", "帮我找对象", "有合适的人吗").
+                2. **refresh_candidate**: 用户明确表示想看**下一批** (基于已有结果翻页).
+                   - 关键词: "换", "再", "更多", "别的", "下一批".
+                   - 例如: "换一批", "再推荐几个", "还有吗", "不喜欢这些", "看点别的".
                 3. **deep_dive**: 用户对**之前推荐的某个人**感兴趣，想深入了解或**询问追求建议**。
                    - 例如: "林薇怎么样", "说说张三的性格", "怎么追她", "如何和她相处"。
                 4. **chitchat**: 纯闲聊 (如 "你好"), 或者**通用情感咨询/个人提升问题**。
@@ -64,7 +65,7 @@ class IntentNode:
         )
 
     def load_profile(self, state: MatchmakingState):
-        """Step 0: 加载当前用户全量画像 (Basic + Profile)"""
+        """Step 0: 加载当前用户全量画像 (带 Summary 缓存检查)"""
         print(f"👤 [LoadProfile] 加载用户: {state['user_id']}")
         try:
             uid = ObjectId(state['user_id'])
@@ -73,17 +74,21 @@ class IntentNode:
             user_basic = self.db.users_basic.find_one({"_id": uid})
             
             # 2. 查 Profile
-            user_profile = self.db.profile.find_one({"_id": uid}) or {}
+            user_profile = self.db.profile.find_one({"user_id": uid}) or {}
             
-            # 3. 生成 Summary
-            summary = self.profile_service.generate_profile_summary(user_basic, user_profile)
+            # --- 3. Summary 缓存逻辑 (封装复用) ---
+            summary = self.profile_service.get_profile_summary_with_cache(
+                user_basic, 
+                user_profile, 
+                self.db.profile # 这里传入 collection 对象
+            )
             
             # 4. 更新 State
             state['current_user_basic'] = user_basic
-            state['current_user_profile'] = user_profile
+            state['current_user_profile'] = self.profile_service.clean_profile_data(user_profile)
             state['current_user_summary'] = summary
-            state['search_count'] = 0 
-            
+            state['search_count'] = 0
+                        
         except Exception as e:
             print(f"   ❌ 加载用户失败: {e}")
             state['error_msg'] = str(e)

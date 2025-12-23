@@ -17,6 +17,7 @@ class LLMConfig(BaseModel):
     temperature_user: float
     temperature_ai: float
     chroma_embedding_model: str # <--- 新增
+    vector_dims: int
 
 class GenerationConfig(BaseModel):
     num_users: int

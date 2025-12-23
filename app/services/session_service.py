@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 from bson import ObjectId
 from pymongo import DESCENDING
 
 from app.core.container import container
-from app.common.models.state import MatchmakingState
 
 class SessionService:
     def __init__(self):

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from datetime import date
 
 from app.core.container import container
 from app.common.models.state import MatchmakingState

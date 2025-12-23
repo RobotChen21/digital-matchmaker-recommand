@@ -112,9 +112,9 @@ async def main():
             if intent == "search_candidate":
                 cands = final_state.get('final_candidates', [])
                 print(f"   -> 推荐了 {len(cands)} 人")
-                
+
             if intent == "deep_dive":
-                target = final_state.get('target_person_name')
+                target = final_state.get('last_target_person')
                 print(f"   -> 深度探索: {target}")
 
             # --- F. 持久化更新状态 (Persist State) ---

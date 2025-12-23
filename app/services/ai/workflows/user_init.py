@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, date
 from bson import ObjectId
-from langchain_core.documents import Document
 
 from app.core.container import container
 from app.core.config import settings
@@ -91,13 +90,14 @@ class UserInitializationService:
                 occ_info = profile_data.get("occupation_profile", {}) or {}
                 job_title = occ_info.get("job_title", "")
                 industry = occ_info.get("industry", "")
-
+                
                 fam_info = profile_data.get("family_profile", {}) or {}
                 family_struct = fam_info.get("family_structure", "")
                 
                 life_info = profile_data.get("lifestyle_profile", {}) or {}
                 smoking = life_info.get("smoking", "")
                 drinking = life_info.get("drinking", "")
+                exercise = life_info.get("exercise_level", "")
                 
                 pers_info = profile_data.get("personality_profile", {}) or {}
                 mbti = pers_info.get("mbti", "")
@@ -106,12 +106,11 @@ class UserInitializationService:
                 attachment = love_info.get("attachment_style", "")
                 
                 raw_keywords = [
-                    tags_str, highest_degree, major, job_title, industry, 
-                    family_struct, smoking, drinking, mbti, attachment,
+                    tags_str, highest_degree, major, job_title, industry,
+                    family_struct, smoking, drinking, exercise, mbti, attachment,
                     user_basic.get('city', '')
                 ]
                 keyword_tags = " ".join([str(k) for k in raw_keywords if k])
-                
                 # 获取向量 (复用 Chroma 的模型)
                 vector = self.chroma_manager.embeddings_model.embed_query(summary_text)
                 

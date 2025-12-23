@@ -2,7 +2,8 @@
 from datetime import datetime
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
-from app.core.utils.dict_utils import smart_merge, flatten_dict
+
+from app.core.utils.dict_utils import smart_merge
 from app.core.container import container
 from app.common.models.state import MatchmakingState
 
@@ -89,7 +90,7 @@ class OnboardingNode:
         record = self.db.onboarding_dialogues.find_one({"user_id": uid})
         history_list = record.get('messages', []) if record else []
 
-        full_profile = self.db.profile.find_one({"user_id": uid}) or {} # 先读当前的
+        full_profile = state['current_user_profile']
         
         # [Strategy] 预先生成 Hint，确保如果不进 batch 更新逻辑，后续步骤也有值可用
         # ProfileService 内部可能有 LLM 调用，建议也改为 async，但为了最小改动，这里先同步执行

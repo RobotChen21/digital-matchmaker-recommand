@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, date # 导入 date
 from langchain_openai import ChatOpenAI
 from app.services.ai.agents.extractors import (
@@ -123,6 +123,81 @@ class ProfileService:
             print(f"⚠️ [Summary Gen] 生成摘要失败: {e}")
             return f"我是{basic.get('nickname', '用户')}，期待在这里遇到对的人。"
 
+    def get_profile_summary_with_cache(self, basic: Dict, profile: Dict, db_collection) -> str:
+        """
+        获取画像摘要的高级封装 (带缓存 + 5分钟防抖)
+        :param basic: 用户基础信息
+        :param profile: 用户详细画像 (需包含 timestamps)
+        :param db_collection: MongoDB集合对象，用于回写缓存 (如 db["users_profile"])
+        :return: 摘要文本
+        """
+        summary = profile.get("user_summary")
+        p_up = profile.get("updated_at")
+        s_up = profile.get("summary_updated_at")
+        
+        need_gen = False
+        
+        if not summary or not s_up:
+            # 场景 A: 还没生成过 -> 必须生成
+            need_gen = True
+        elif p_up and p_up > s_up:
+            # 场景 B: 缓存已过期 (Profile 新于 Summary)
+            # 检查 Profile 更新了多久 (防抖: 5分钟内不重刷)
+            time_since_update = datetime.now() - p_up
+            if time_since_update.total_seconds() > 300: # 300秒 = 5分钟
+                need_gen = True
+            else:
+                need_gen = False # 暂用旧的
+        
+        if need_gen:
+            print(f"   🧠 [ProfileService] 重新生成摘要 (User: {basic.get('nickname')})...")
+            summary = self.generate_profile_summary(basic, profile)
+            # 回写 DB
+            try:
+                if "_id" in profile:
+                    query = {"_id": profile["_id"]}
+                else:
+                    query = {"user_id": basic.get("_id")} # Fallback
+                
+                db_collection.update_one(
+                    query,
+                    {"$set": {"user_summary": summary, "summary_updated_at": datetime.now()}}
+                )
+            except Exception as e:
+                print(f"   ⚠️ 回写摘要缓存失败: {e}")
+        else:
+            if summary: 
+                # print("   ⚡ 使用缓存摘要")
+                pass
+            
+        return summary or ""
+
+    @staticmethod
+    def clean_profile_data(profile: Dict) -> Dict:
+        """
+        数据清洗：移除 profile 中的 summary 和系统字段，只保留纯净的结构化画像。
+        用于瘦身 State，避免数据冗余。
+        """
+        if not profile:
+            return {}
+        
+        # 浅拷贝，防止修改原引用影响后续逻辑
+        clean_data = profile.copy()
+        
+        # 定义要移除的字段列表
+        keys_to_remove = [
+            "user_summary", 
+            "summary_updated_at",
+            "updated_at"
+            # "_id",
+            # "user_id",
+        ]
+        
+        for k in keys_to_remove:
+            clean_data.pop(k, None)
+            
+        return clean_data
+
     def generate_profile_completion_hint(self, profile: Dict) -> str:
         """
         使用 LLM 生成当前画像的完整度提示。
@@ -130,7 +205,7 @@ class ProfileService:
         import json
         from langchain_core.prompts import ChatPromptTemplate
         from app.common.models.profile import REQUIRED_PROFILE_DIMENSIONS # 导入规则
-        
+
         prompt = ChatPromptTemplate.from_template(
             """你是一名资深的婚恋画像分析师。请根据【已提取画像JSON】对比【必填维度清单】，生成一份详尽的【当前画像状态分析】给前台红娘。
 

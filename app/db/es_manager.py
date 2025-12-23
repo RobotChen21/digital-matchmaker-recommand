@@ -21,11 +21,14 @@ class ESManager:
         
         self.es_url = settings.database.es_url
         self.index_name = settings.database.es_index_name
+        self.es_vector_dims = settings.llm.vector_dims
         
         # 连接 ES (假设开发环境已关闭 Security，生产环境需配置 basic_auth)
+        # 强制指定 scheme 为 http，且不传递任何 SSL 参数，防止客户端自动升级
+        target_url = self.es_url.replace("https://", "http://")
+        
         self.client = Elasticsearch(
-            self.es_url,
-            verify_certs=False,  # 开发环境忽略证书
+            hosts=[target_url],
             request_timeout=30
         )
         
@@ -39,9 +42,6 @@ class ESManager:
     def create_index_if_not_exists(self):
         """
         创建索引 Mapping。
-        注意：生产环境可能需要更复杂的 analyzer 配置 (如 ik_smart)。
-        这里我们先使用标准分词或 simple 分词，确保跑通。
-        如果你装了 ik 分词器，把 analyzer 改成 'ik_smart'。
         """
         if self.client.indices.exists(index=self.index_name):
             logger.info(f"Index '{self.index_name}' already exists.")
@@ -74,8 +74,8 @@ class ESManager:
                     # 3. Vector: 语义向量 -> KNN 搜索
                     "profile_vector": {
                         "type": "dense_vector",
-                        "dims": 1536,         # OpenAI embedding dims
-                        "index": true,
+                        "dims": self.es_vector_dims,
+                        "index": True,
                         "similarity": "cosine" # 余弦相似度
                     }
                 }
@@ -174,7 +174,7 @@ class ESManager:
                         "rank_constant": 20
                     }
                 },
-                source=["user_id", "tags", "gender", "age", "city"] # 只返回关键字段
+                _source=["user_id", "tags", "gender", "age", "city"] # 只返回关键字段
             )
             
             hits = response.get("hits", {}).get("hits", [])

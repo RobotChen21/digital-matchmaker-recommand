@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
