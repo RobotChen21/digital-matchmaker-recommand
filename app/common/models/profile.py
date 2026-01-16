@@ -16,11 +16,13 @@ class Big5Traits(BaseModel):
     neuroticism: Optional[float] = Field(None, description="神经质/情绪不稳定性 (0.0-1.0)")
 
 class PersonalityProfile(BaseModel):
+    reasoning: str = Field(description="[CoT] 在得出结论前，先分析用户的用词、语气和行为模式")
     big5: Optional[Big5Traits] = None
     mbti: Optional[str] = Field(None, description="MBTI类型 (如 INTJ, ENFP)")
 
 # 3. 价值观画像
 class ValuesProfile(BaseModel):
+    reasoning: str = Field(description="[CoT] 分析用户在做选择时的倾向，以此推导价值观权重")
     family: Optional[float] = Field(None, description="家庭观念重视程度 (0.0-1.0)")
     career: Optional[float] = Field(None, description="事业重视程度 (0.0-1.0)")
     romance: Optional[float] = Field(None, description="爱情重视程度 (0.0-1.0)")
@@ -43,6 +45,7 @@ class LoveStyleProfile(BaseModel):
 
 # 6. 风险画像
 class RiskProfile(BaseModel):
+    reasoning: str = Field(description="[CoT] 详细列举风险判定依据 (言辞过激、暴力倾向等证据)")
     emotional_stability: Optional[float] = Field(None, description="情绪稳定性评分 (0.0-1.0, 越低越不稳定)")
     safety_risk: Optional[float] = Field(None, description="安全风险评分 (0.0-1.0, 越高风险越大)")
     self_reported_issues: Optional[str] = Field(None, description="自述的问题或雷点")

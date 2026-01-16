@@ -30,6 +30,7 @@ class AppContainer:
         # LLM 缓存
         self._llms = {}
 
+    #可以使用双重检查所来保证线程安全
     @classmethod
     def get_instance(cls) -> "AppContainer":
         if not cls._instance:

@@ -79,6 +79,9 @@ class PersonalityExtractor(BaseProfileExtractor):
     def _get_system_prompt(self) -> str:
         return """你是一位资深的人格心理学家。请分析用户的大五人格 (0.0-1.0) 和 MBTI 类型。
         
+        【思维链要求】
+        **必须优先填充 'reasoning' 字段**。请先仔细分析用户的用词频率、语气强弱、行为模式，把推理过程写出来，然后再打分。
+        
         - 开放性 (Openness): 想象力、好奇心
         - 尽责性 (Conscientiousness): 条理、自律
         - 外向性 (Extroversion): 活力、社交
@@ -109,7 +112,10 @@ class ValuesExtractor(BaseProfileExtractor):
         
     def _get_system_prompt(self) -> str:
         return """你负责分析用户的核心价值观权重 (0.0-1.0)。
-        通过用户做选择的倾向、对未来的规划来判断：
+        
+        【思维链要求】
+        价值观是非常隐性的。**必须优先填充 'reasoning' 字段**。
+        请结合用户对未来规划的描述、对选择的取舍，详细推导为什么给这个分数。
         
         - 家庭: 是否渴望结婚生子？是否听从父母？
         - 事业: 是否是工作狂？是否有野心？
@@ -149,6 +155,10 @@ class RiskExtractor(BaseProfileExtractor):
         
     def _get_system_prompt(self) -> str:
         return """你是风控专家，负责识别潜在的交往风险。
+        
+        【思维链要求】
+        风险判定事关重大。**必须优先填充 'reasoning' 字段**。
+        如果是高风险（安全风险 > 0.5 或 情绪稳定 < 0.5），必须引述用户的原话作为证据。
         
         - 情绪稳定性: 打分 0.0(极不稳定)-1.0(非常稳定)。注意是否有过激言论、消极抱怨。
         - 安全风险: 打分 0.0(安全)-1.0(危险)。注意是否有暴力倾向、欺诈嫌疑、极端思想。
