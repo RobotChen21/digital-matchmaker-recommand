@@ -71,6 +71,16 @@ graph TD
 
 ---
 
+## 📚 相关文档 (Documentation)
+
+为了方便深入了解本项目，我们提供了详细的设计与方案文档：
+
+*   **[系统架构设计说明书](./docs/智慧红娘agent系统框架.md)**：深入解析三库协同（Mongo/ES/Chroma）、Hint-Driven Onboarding、双路召回与 RRF 融合等核心技术细节。
+*   **[对话样例展示](./docs/对话样例.pdf)**：直观展示红娘 Agent 如何进行温情追问、多轮指代消解以及带有 RAG 证据的深度推荐。
+*   **[垂直大模型全链路指南](./docs/MODEL_DISTILLATION_GUIDE.md)**：记录了如何利用 Teacher-Student 蒸馏方案，将 DeepSeek 等通用大模型的逻辑抽取与对话能力“内化”到 7B/8B 级垂直小模型中的全过程。
+
+---
+
 ## 🛠️ 技术栈 (Tech Stack)
 
 *   **Core**: Python 3.11, FastAPI, **LangGraph**, LangChain
