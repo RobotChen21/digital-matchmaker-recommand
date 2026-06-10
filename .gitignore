@@ -61,5 +61,7 @@ GEMINI.md
 AGENTS.md
 other/
 config/
-scripts/
+/scripts/
 run.txt
+
+!training/scripts/
