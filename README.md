@@ -56,7 +56,7 @@ graph TD
     
     Intent -->|Onboarding| OnboardingNode[新用户注册]
     Intent -->|Chitchat| ResponseNode[闲聊回复]
-    Intent -->|DeepDive| DeepDiveNode[深度挖掘/追问]
+    Intent -->|DeepDive| DeepDiveNode[深度挖掘/追问 - RAG]
     Intent -->|Search| FilterNode[1. 硬条件过滤 - Mongo]
     
     FilterNode --> RecallNode[2. 混合召回 - ES Hybrid]
